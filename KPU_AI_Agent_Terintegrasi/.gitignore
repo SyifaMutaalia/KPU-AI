@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+data/
+*.db
+*.sqlite3
+.coverage
+htmlcov/
+
+# Source PDFs, local inventory and ingestion checkpoint must not be committed.
+# Back up ingestion_state.json privately.

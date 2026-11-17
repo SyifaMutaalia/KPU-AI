@@ -1,0 +1,15 @@
+# Compatible major/minor ranges. Freeze actual production versions with pip-compile/uv lock.
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+pydantic>=2.10,<3
+pydantic-settings>=2.8,<3
+SQLAlchemy>=2.0,<3
+psycopg[binary]>=3.2,<4
+alembic>=1.15,<2
+langchain>=1.0,<2
+langchain-openai>=1.0,<2
+langchain-pinecone>=0.2,<1
+langchain-text-splitters>=1.0,<2
+pinecone>=7,<10
+httpx>=0.28,<1
+pypdf>=5.0,<7  # extract embedded PDF text (does not perform OCR)
