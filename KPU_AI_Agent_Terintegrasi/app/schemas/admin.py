@@ -73,6 +73,8 @@ class AdminSummaryOut(BaseModel):
     last_sync: datetime | None
     workflows: dict[str, dict[str, str | datetime | None]]
     activities: list[dict[str, str | datetime | None]]
+    open_errors: int = 0
+    latest_error_at: datetime | None = None
 
 
 class AdminN8nWorkflowOut(BaseModel):
@@ -194,3 +196,17 @@ class IngestionErrorCallbackOut(BaseModel):
     status: str
     created: bool
     retry_marked_failed: int
+
+
+class IngestionRunIn(BaseModel):
+    """Permintaan admin menjalankan WF1: tanpa pdf_url = pindai JDIH, dengan pdf_url = satu PDF."""
+
+    model_config = ConfigDict(extra="forbid")
+    pdf_url: str | None = Field(default=None, max_length=2048)
+    title: str | None = Field(default=None, max_length=500)
+
+
+class IngestionRunOut(BaseModel):
+    status: Literal["accepted"]
+    message: str
+    n8n_execution_id: str

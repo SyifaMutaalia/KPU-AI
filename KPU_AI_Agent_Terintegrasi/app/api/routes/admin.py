@@ -60,9 +60,12 @@ from app.schemas.admin import (
     IngestionCallbackOut,
     IngestionErrorCallbackIn,
     IngestionErrorCallbackOut,
+    IngestionRunIn,
+    IngestionRunOut,
     ResetPasswordIn,
     RetryOut,
 )
+from app.core.safety import is_approved_source
 from app.services.n8n_monitor import N8nMonitorError, get_n8n_monitoring
 
 logger = logging.getLogger(__name__)
@@ -420,8 +423,22 @@ def dashboard_summary(
         reverse=True,
     )
 
+    open_errors = int(
+        db.scalar(
+            select(func.count())
+            .select_from(IngestionErrorLog)
+            .where(IngestionErrorLog.status.in_(("failed", "error", "retry_failed")))
+        )
+        or 0
+    )
+    latest_error_at = db.scalar(select(func.max(IngestionErrorLog.occurred_at)))
     workflows: dict[str, dict[str, str | datetime | None]] = {}
-    for name in ("WF1", "WF2"):
+    # WF2 tidak membuat run; aktivitasnya adalah error yang ia catat.
+    workflows["WF2"] = {
+        "status": "failed" if open_errors else ("success" if latest_error_at else "unknown"),
+        "last_execution_at": latest_error_at,
+    }
+    for name in ("WF1",):
         run = db.scalar(
             select(IngestionRun)
             .where(IngestionRun.workflow == name)
@@ -442,6 +459,8 @@ def dashboard_summary(
         last_sync=last_sync,
         workflows=workflows,
         activities=activities[:10],
+        open_errors=open_errors,
+        latest_error_at=latest_error_at,
     )
 
 
@@ -648,6 +667,98 @@ def _require_ingestion_key(x_ingestion_key: str) -> None:
         x_ingestion_key.encode(), configured.encode()
     ):
         raise HTTPException(status_code=401, detail="Kunci callback tidak valid.")
+
+
+_RUN_COOLDOWN = timedelta(minutes=2)
+
+
+@router.post(
+    "/dashboard/ingestion/run", response_model=IngestionRunOut, status_code=202
+)
+def run_ingestion(
+    payload: IngestionRunIn,
+    _user: AdminUser = Depends(require_admin_csrf),
+    db: Session = Depends(get_db),
+):
+    """Admin memicu WF1 lewat webhook terautentikasi yang sama dengan Retry."""
+    settings = get_settings()
+    if not settings.admin_retry_webhook_url or not settings.admin_retry_webhook_secret:
+        raise HTTPException(
+            status_code=503, detail="Webhook WF1 n8n belum dikonfigurasi di backend."
+        )
+    pdf_url = (payload.pdf_url or "").strip() or None
+    if pdf_url and (
+        not pdf_url.lower().startswith("https://")
+        or not is_approved_source(pdf_url, settings.rag_allowed_hosts)
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="URL PDF harus https dan berasal dari situs resmi yang diizinkan.",
+        )
+    now = utcnow()
+    recent = db.scalar(
+        select(AdminAuditLog.created_at)
+        .where(
+            AdminAuditLog.action == "ingestion.run_requested",
+            AdminAuditLog.created_at >= now - _RUN_COOLDOWN,
+        )
+        .limit(1)
+    )
+    if recent is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Ingestion baru saja diminta. Tunggu 2 menit lalu coba lagi.",
+        )
+    request_id = secrets.token_hex(16)
+    _audit(
+        db,
+        _user.id,
+        "ingestion.run_requested",
+        "ingestion_run",
+        request_id,
+        {"pdf_url": pdf_url} if pdf_url else {"mode": "scan_jdih"},
+    )
+    db.commit()
+    body = {"source": "Admin", "requested_at": now.isoformat()}
+    if pdf_url:
+        body["pdf_url"] = pdf_url
+        if payload.title:
+            body["title"] = payload.title.strip()
+    try:
+        with httpx.Client(timeout=15) as client:
+            result = client.post(
+                settings.admin_retry_webhook_url,
+                json=body,
+                headers={
+                    "X-Admin-Retry-Secret": settings.admin_retry_webhook_secret,
+                    "Idempotency-Key": request_id,
+                },
+            )
+    except httpx.HTTPError as exc:
+        logger.error("Webhook WF1 tidak dapat dihubungi (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=502, detail="n8n tidak dapat dihubungi. Periksa workflow WF1."
+        ) from None
+    try:
+        confirmation = result.json() if result.is_success else {}
+    except ValueError:
+        confirmation = {}
+    execution_id = confirmation.get("execution_id")
+    if confirmation.get("accepted") is not True or not isinstance(execution_id, str):
+        logger.warning("Webhook WF1 menolak permintaan, HTTP %s", result.status_code)
+        raise HTTPException(
+            status_code=502,
+            detail=f"n8n belum menerima permintaan (HTTP {result.status_code}). Pastikan WF1 aktif.",
+        )
+    return IngestionRunOut(
+        status="accepted",
+        message=(
+            "WF1 menjalankan ingestion PDF tersebut."
+            if pdf_url
+            else "WF1 memindai JDIH KPU; dokumen baru akan muncul di halaman Dokumen."
+        ),
+        n8n_execution_id=execution_id[:128],
+    )
 
 
 @router.post("/ingestion/callback", response_model=IngestionCallbackOut)

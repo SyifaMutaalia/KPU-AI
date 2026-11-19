@@ -38,7 +38,7 @@ export default function AdminWorkflows() {
   useEffect(() => { void load(); }, [load]);
 
   return <AdminShell><div className="admin-content">
-    <header className="admin-heading"><div><p className="eyebrow">INTEGRASI LANGSUNG</p><h1>Workflow n8n</h1><p>Daftar workflow dan 100 eksekusi terbaru dibaca langsung dari API n8n. Halaman ini tidak mengubah, menjalankan, atau mengaktifkan workflow.</p></div></header>
+    <header className="admin-heading"><div><p className="eyebrow">INTEGRASI LANGSUNG</p><h1>Workflow n8n</h1><p>Daftar workflow dan 100 eksekusi terbaru dibaca langsung dari API n8n. Untuk menjalankan ingestion, gunakan tombol di halaman Dokumen.</p></div></header>
     {loading && <p className="admin-state" role="status">Memuat data n8n...</p>}
     {error && <div className="error-box" role="alert">{error}<button onClick={() => void load()}>Coba lagi</button></div>}
     {!loading && !error && data && <>

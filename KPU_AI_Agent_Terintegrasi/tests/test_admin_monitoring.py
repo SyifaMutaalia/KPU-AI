@@ -360,3 +360,60 @@ def test_wf2_error_callback_is_idempotent_and_marks_retry_failed(client, monkeyp
     assert errors["items"][0]["node"] == "Pinecone Vector Store"
     with Session(get_engine()) as db:
         assert db.get(IngestionErrorLog, original_id).status == "retry_failed"
+
+
+def test_admin_can_trigger_wf1_and_summary_counts_open_errors(client, monkeypatch):
+    create_admin(must_change=False)
+    assert login(client).status_code == 200
+    monkeypatch.setenv("ADMIN_RETRY_WEBHOOK_URL", "https://n8n.internal.test/webhook/kpu-ingest-pdf")
+    monkeypatch.setenv("ADMIN_RETRY_WEBHOOK_SECRET", "retry-secret-value")
+    get_settings.cache_clear()
+    sent = {}
+
+    class FakeResponse:
+        status_code = 200
+        is_success = True
+
+        def json(self):
+            return {"accepted": True, "execution_id": "4242"}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def post(self, url, json, headers):
+            sent.update(url=url, json=json, headers=headers)
+            return FakeResponse()
+
+    from app.api.routes import admin as admin_routes
+
+    monkeypatch.setattr(admin_routes.httpx, "Client", FakeClient)
+    csrf = client.get("/api/v1/admin/auth/csrf").json()["csrf_token"]
+    headers = {"X-CSRF-Token": csrf}
+    assert client.post("/api/v1/admin/dashboard/ingestion/run", json={}).status_code == 403
+    bad = client.post(
+        "/api/v1/admin/dashboard/ingestion/run",
+        json={"pdf_url": "https://evil.example.org/a.pdf"},
+        headers=headers,
+    )
+    assert bad.status_code == 422
+    ok = client.post("/api/v1/admin/dashboard/ingestion/run", json={}, headers=headers)
+    assert ok.status_code == 202, ok.text
+    assert ok.json()["n8n_execution_id"] == "4242"
+    assert sent["headers"]["X-Admin-Retry-Secret"] == "retry-secret-value"
+    assert "pdf_url" not in sent["json"]
+    again = client.post("/api/v1/admin/dashboard/ingestion/run", json={}, headers=headers)
+    assert again.status_code == 429
+
+    with Session(get_engine()) as db:
+        db.add(IngestionErrorLog(workflow="WF1", execution_id="e1", node="Download PDF", message="x", status="failed", details="{}"))
+        db.commit()
+    summary = client.get("/api/v1/admin/dashboard/summary").json()
+    assert summary["open_errors"] == 1
+    assert summary["workflows"]["WF2"]["status"] == "failed"

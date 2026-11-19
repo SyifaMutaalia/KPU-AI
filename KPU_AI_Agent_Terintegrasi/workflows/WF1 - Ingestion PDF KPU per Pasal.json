@@ -61,31 +61,6 @@
     },
     {
       "parameters": {
-        "model": {
-          "__rl": true,
-          "value": "=gpt-6-luna",
-          "mode": "id"
-        },
-        "builtInTools": {},
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.3,
-      "position": [
-        2718,
-        616
-      ],
-      "id": "33044008-e262-4477-8584-208d8e92807a",
-      "name": "OpenAI Chat Model",
-      "credentials": {
-        "openAiApi": {
-          "id": "CQtiURLB6FIbkOMI",
-          "name": "OpenAI account"
-        }
-      }
-    },
-    {
-      "parameters": {
         "mode": "insert",
         "pineconeIndex": {
           "__rl": true,
@@ -100,7 +75,7 @@
       "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
       "typeVersion": 1.4,
       "position": [
-        3182,
+        2882,
         400
       ],
       "id": "ec9ca6ab-718d-431e-8f4b-51744cfdb0e5",
@@ -121,7 +96,7 @@
       "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
       "typeVersion": 1.2,
       "position": [
-        3134,
+        2834,
         600
       ],
       "id": "40c0b5be-448d-4f89-b5ad-af4dad51a5c9",
@@ -233,26 +208,6 @@
     },
     {
       "parameters": {
-        "promptType": "define",
-        "text": "={{ $json.text }}",
-        "hasOutputParser": true,
-        "options": {
-          "systemMessage": "=Kamu adalah agent yang hanya untuk merubah format file.\n\nEkstrak dokumen hukum KPU berikut menjadi JSON terstruktur.\n\nPertahankan seluruh isi Pasal, ayat, huruf, dan struktur hukum asli.\n\nJangan merangkum atau mengubah substansi.\n\nTeks dokumen:\n{{ $json.text }}",
-          "enableStreaming": true
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 3.1,
-      "position": [
-        2846,
-        400
-      ],
-      "id": "f46f898b-d61a-462d-8fbf-2a35fbe5a3d3",
-      "name": "Normalisasi ke Markdown / JSON",
-      "alwaysOutputData": true
-    },
-    {
-      "parameters": {
         "textSplittingMode": "custom",
         "options": {
           "metadata": {
@@ -262,8 +217,8 @@
                 "value": "={{ $('Siapkan Dokumen').item.json.pdf_url }}"
               },
               {
-                "name": "file_hash",
-                "value": "={{ $('Hitung Hash File').item.json.file_hash }}"
+                "name": "document_id",
+                "value": "={{ 'jdih-' + $('Siapkan Dokumen').item.json.pdf_url.hash('sha256') }}"
               },
               {
                 "name": "title",
@@ -271,16 +226,34 @@
               },
               {
                 "name": "document_type",
-                "value": "={{ $('Siapkan Dokumen').item.json.document_type ?? '' }}"
+                "value": "={{ $('Siapkan Dokumen').item.json.document_type ?? 'PKPU' }}"
+              },
+              {
+                "name": "document_number",
+                "value": "={{ $('Siapkan Dokumen').item.json.document_number ?? '' }}"
+              },
+              {
+                "name": "year",
+                "value": "={{ $('Siapkan Dokumen').item.json.year ?? '' }}"
+              },
+              {
+                "name": "legal_status",
+                "value": "={{ $('Siapkan Dokumen').item.json.legal_status ?? 'belum_diverifikasi' }}"
+              },
+              {
+                "name": "file_hash",
+                "value": "={{ $('Hitung Hash File').item.json.file_hash }}"
               }
             ]
           }
-        }
+        },
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $('Extract PDF').item.json.text }}"
       },
       "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
       "typeVersion": 1.1,
       "position": [
-        3310,
+        3010,
         616
       ],
       "id": "c112e403-7b25-46be-94a1-0ea6ec31e8f2",
@@ -323,7 +296,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const results = [];\nconst seen = new Set();\n\nfor (const item of $input.all()) {\n  const html = item.json.html || \"\";\n\n  const matches = [...html.matchAll(\n    /(?:href|src)\\s*=\\s*[\"']([^\"']+\\.pdf(?:\\?[^\"']*)?)[\"']/gi\n  )];\n\n  for (const match of matches) {\n    let pdf_url = match[1].replace(/&amp;/g, \"&\");\n\n    if (pdf_url.startsWith(\"//\")) {\n      pdf_url = \"https:\" + pdf_url;\n    } else if (pdf_url.startsWith(\"/\")) {\n      pdf_url = \"https://jdih.kpu.go.id\" + pdf_url;\n    } else if (!/^https?:\\/\\//i.test(pdf_url)) {\n      pdf_url = \"https://jdih.kpu.go.id/\" + pdf_url;\n    }\n\n    if (!pdf_url.startsWith(\"https://jdih.kpu.go.id/\")) {\n      continue;\n    }\n\n    if (!pdf_url.includes(\"/data/data_pkpu/\")) {\n      continue;\n    }\n\n    if (seen.has(pdf_url)) continue;\n    seen.add(pdf_url);\n\n    results.push({\n      json: {\n        pdf_url,\n        source: \"JDIH KPU\",\n        document_type: \"PKPU\"\n      }\n    });\n  }\n}\n\nreturn results;\n"
+        "jsCode": "const results = [];\nconst seen = new Set();\n\n// Status keberlakuan dan judul dibaca dari halaman detail JDIH.\n// Jika tidak terbaca, status = belum_diverifikasi (chatbot memberi catatan).\nconst plain = (s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ')\n  .replace(/&amp;/g, '&').replace(/\\s+/g, ' ').trim();\n\nfunction legalStatus(html) {\n  const m = plain(html).match(/status(?:\\s+(?:peraturan|dokumen|hukum))?\\s*:?\\s*(tidak\\s+berlaku|dicabut|berlaku|diubah)/i);\n  if (!m) return 'belum_diverifikasi';\n  const v = m[1].toLowerCase().replace(/\\s+/g, ' ');\n  if (v === 'berlaku') return 'berlaku';\n  if (v === 'diubah') return 'belum_diverifikasi';\n  return 'tidak_berlaku';\n}\n\nfunction pageTitle(html) {\n  const candidates = [\n    (html.match(/<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)[\"']/i) || [])[1],\n    (html.match(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i) || [])[1],\n    (html.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i) || [])[1],\n  ].map(plain).filter((t) => t.length >= 10);\n  return candidates.length ? candidates[0].slice(0, 500) : null;\n}\n\nfor (const item of $input.all()) {\n  const html = item.json.html || \"\";\n  const title = pageTitle(html);\n  const legal_status = legalStatus(html);\n\n  const matches = [...html.matchAll(\n    /(?:href|src)\\s*=\\s*[\"']([^\"']+\\.pdf(?:\\?[^\"']*)?)[\"']/gi\n  )];\n\n  for (const match of matches) {\n    let pdf_url = match[1].replace(/&amp;/g, \"&\");\n\n    if (pdf_url.startsWith(\"//\")) {\n      pdf_url = \"https:\" + pdf_url;\n    } else if (pdf_url.startsWith(\"/\")) {\n      pdf_url = \"https://jdih.kpu.go.id\" + pdf_url;\n    } else if (!/^https?:\\/\\//i.test(pdf_url)) {\n      pdf_url = \"https://jdih.kpu.go.id/\" + pdf_url;\n    }\n\n    if (!pdf_url.startsWith(\"https://jdih.kpu.go.id/\")) {\n      continue;\n    }\n\n    if (!pdf_url.includes(\"/data/data_pkpu/\")) {\n      continue;\n    }\n\n    if (seen.has(pdf_url)) continue;\n    seen.add(pdf_url);\n\n    results.push({\n      json: {\n        pdf_url,\n        source: \"JDIH KPU\",\n        document_type: \"PKPU\",\n        title,\n        legal_status,\n        detail_url: item.json.detail_url ?? null,\n      }\n    });\n  }\n}\n\nreturn results;\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -341,7 +314,7 @@
       "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
       "typeVersion": 1,
       "position": [
-        3406,
+        3106,
         824
       ],
       "id": "5ddb4db8-0bbd-440f-8ea5-683203bc114a",
@@ -411,7 +384,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Menyatukan jalur webhook dan jadwal harian sebelum download PDF.\nlet retryErrorId = null;\ntry {\n  if ($('Normalisasi Input Webhook').isExecuted) {\n    retryErrorId = $('Normalisasi Input Webhook').first().json.retry_error_id ?? null;\n  }\n} catch (e) { /* eksekusi dari jadwal */ }\n\nreturn $input.all().map((item, index) => {\n  const j = item.json;\n  const url = String(j.pdf_url);\n  let fileName = '';\n  try { fileName = decodeURIComponent(new URL(url).pathname.split('/').pop() || ''); } catch (e) {}\n  const base = fileName.replace(/\\.pdf$/i, '').replace(/[_+]+/g, ' ').replace(/\\s+/g, ' ').trim();\n  const yearMatch = base.match(/\\b(?:19|20)\\d{2}\\b/);\n  const numberMatch = base.match(/(?:nomor|no\\.?|pkpu)\\s*(\\d+)/i);\n  return {\n    json: {\n      pdf_url: url,\n      source: j.source ?? 'JDIH KPU',\n      document_type: j.document_type ?? 'PKPU',\n      title: j.title ?? (base ? base.slice(0, 2000) : null),\n      document_number: j.document_number ?? (numberMatch ? numberMatch[1] : null),\n      year: j.year ?? (yearMatch ? Number(yearMatch[0]) : null),\n      retry_error_id: j.retry_error_id ?? retryErrorId,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+        "jsCode": "// Menyatukan jalur webhook dan jadwal harian sebelum download PDF.\nlet retryErrorId = null;\ntry {\n  if ($('Normalisasi Input Webhook').isExecuted) {\n    retryErrorId = $('Normalisasi Input Webhook').first().json.retry_error_id ?? null;\n  }\n} catch (e) { /* eksekusi dari jadwal */ }\n\nreturn $input.all().map((item, index) => {\n  let detail = {};\n  try { detail = $('Periksa Link Download').itemMatching(index).json; } catch (e) { /* jalur webhook */ }\n  const j = { ...detail, ...Object.fromEntries(Object.entries(item.json).filter(([, v]) => v !== null && v !== undefined)) };\n  const url = String(j.pdf_url);\n  let fileName = '';\n  try { fileName = decodeURIComponent(new URL(url).pathname.split('/').pop() || ''); } catch (e) {}\n  const base = fileName.replace(/\\.pdf$/i, '').replace(/[_+]+/g, ' ').replace(/\\s+/g, ' ').trim();\n  const yearMatch = base.match(/\\b(?:19|20)\\d{2}\\b/);\n  const numberMatch = base.match(/(?:nomor|no\\.?|pkpu)\\s*(\\d+)/i);\n  return {\n    json: {\n      pdf_url: url,\n      source: j.source ?? 'JDIH KPU',\n      document_type: j.document_type ?? 'PKPU',\n      title: j.title ?? (base ? base.slice(0, 2000) : null),\n      document_number: j.document_number ?? (numberMatch ? numberMatch[1] : null),\n      year: j.year ?? (yearMatch ? Number(yearMatch[0]) : null),\n      legal_status: ['berlaku', 'tidak_berlaku'].includes(j.legal_status) ? j.legal_status : 'belum_diverifikasi',\n      retry_error_id: j.retry_error_id ?? retryErrorId,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
       },
       "id": "8ed8e34e-b986-4a81-8439-c507bab03865",
       "name": "Siapkan Dokumen",
@@ -449,7 +422,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3482,
+        3182,
         400
       ]
     },
@@ -471,12 +444,38 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3702,
+        3402,
         400
       ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://kpu-backend:8000/api/v1/admin/ingestion/callback",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workflow: 'WF1', execution_id: String($execution.id), status: 'processing', document_id: 'jdih-' + $('Siapkan Dokumen').item.json.pdf_url.hash('sha256'), source_url: $('Siapkan Dokumen').item.json.pdf_url, document_type: $('Siapkan Dokumen').item.json.document_type ?? null, document_number: $('Siapkan Dokumen').item.json.document_number ?? null, title: $('Siapkan Dokumen').item.json.title ?? null, year: $('Siapkan Dokumen').item.json.year ?? null, file_hash: $json.file_hash, namespace: 'kpu_kab_subang', pinecone_confirmed: false, retry_error_id: $('Siapkan Dokumen').item.json.retry_error_id ?? null }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "3969e231-8175-4118-8eb5-ab008a481ee5",
+      "name": "Kirim Status Processing ke Admin",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2484,
+        620
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
     }
   ],
   "pinData": {},
@@ -507,19 +506,8 @@
       "main": [
         [
           {
-            "node": "Normalisasi ke Markdown / JSON",
+            "node": "Pinecone Vector Store",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenAI Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Normalisasi ke Markdown / JSON",
-            "type": "ai_languageModel",
             "index": 0
           }
         ]
@@ -585,17 +573,6 @@
         [
           {
             "node": "ambil URL dan metadata PDF",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Normalisasi ke Markdown / JSON": {
-      "main": [
-        [
-          {
-            "node": "Pinecone Vector Store",
             "type": "main",
             "index": 0
           }
@@ -713,6 +690,11 @@
         [
           {
             "node": "Extract PDF",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Kirim Status Processing ke Admin",
             "type": "main",
             "index": 0
           }
