@@ -7,3 +7,10 @@
     reverse_proxy kpu-frontend:3000
     encode gzip
 }
+
+# Backend FastAPI untuk frontend di Vercel (FASTAPI_BASE_URL=https://API_HOST).
+# Tanpa API_HOST di .env, blok ini hanya melayani api.localhost (tidak terpakai).
+{$API_HOST:api.localhost} {
+    reverse_proxy kpu-backend:8000
+    encode gzip
+}
