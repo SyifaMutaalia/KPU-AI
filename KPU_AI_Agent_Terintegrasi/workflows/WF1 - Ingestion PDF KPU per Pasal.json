@@ -55,7 +55,7 @@
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
       "position": [
-        2622,
+        2842,
         400
       ]
     },
@@ -75,7 +75,7 @@
       "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
       "typeVersion": 1.4,
       "position": [
-        2882,
+        3102,
         400
       ],
       "id": "ec9ca6ab-718d-431e-8f4b-51744cfdb0e5",
@@ -96,7 +96,7 @@
       "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
       "typeVersion": 1.2,
       "position": [
-        2834,
+        3054,
         600
       ],
       "id": "40c0b5be-448d-4f89-b5ad-af4dad51a5c9",
@@ -253,7 +253,7 @@
       "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
       "typeVersion": 1.1,
       "position": [
-        3010,
+        3230,
         616
       ],
       "id": "c112e403-7b25-46be-94a1-0ea6ec31e8f2",
@@ -314,7 +314,7 @@
       "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
       "typeVersion": 1,
       "position": [
-        3106,
+        3326,
         824
       ],
       "id": "5ddb4db8-0bbd-440f-8ea5-683203bc114a",
@@ -384,7 +384,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Menyatukan jalur webhook dan jadwal harian sebelum download PDF.\nlet retryErrorId = null;\ntry {\n  if ($('Normalisasi Input Webhook').isExecuted) {\n    retryErrorId = $('Normalisasi Input Webhook').first().json.retry_error_id ?? null;\n  }\n} catch (e) { /* eksekusi dari jadwal */ }\n\nreturn $input.all().map((item, index) => {\n  let detail = {};\n  try { detail = $('Periksa Link Download').itemMatching(index).json; } catch (e) { /* jalur webhook */ }\n  const j = { ...detail, ...Object.fromEntries(Object.entries(item.json).filter(([, v]) => v !== null && v !== undefined)) };\n  const url = String(j.pdf_url);\n  let fileName = '';\n  try { fileName = decodeURIComponent(new URL(url).pathname.split('/').pop() || ''); } catch (e) {}\n  const base = fileName.replace(/\\.pdf$/i, '').replace(/[_+]+/g, ' ').replace(/\\s+/g, ' ').trim();\n  const yearMatch = base.match(/\\b(?:19|20)\\d{2}\\b/);\n  const numberMatch = base.match(/(?:nomor|no\\.?|pkpu)\\s*(\\d+)/i);\n  return {\n    json: {\n      pdf_url: url,\n      source: j.source ?? 'JDIH KPU',\n      document_type: j.document_type ?? 'PKPU',\n      title: j.title ?? (base ? base.slice(0, 2000) : null),\n      document_number: j.document_number ?? (numberMatch ? numberMatch[1] : null),\n      year: j.year ?? (yearMatch ? Number(yearMatch[0]) : null),\n      legal_status: ['berlaku', 'tidak_berlaku'].includes(j.legal_status) ? j.legal_status : 'belum_diverifikasi',\n      retry_error_id: j.retry_error_id ?? retryErrorId,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+        "jsCode": "// Menyatukan jalur webhook dan jadwal harian sebelum download PDF.\nlet retryErrorId = null;\ntry {\n  if ($('Normalisasi Input Webhook').isExecuted) {\n    retryErrorId = $('Normalisasi Input Webhook').first().json.retry_error_id ?? null;\n  }\n} catch (e) { /* eksekusi dari jadwal */ }\n\nreturn $input.all().map((item, index) => {\n  let detail = {};\n  try { detail = $('Periksa Link Download').itemMatching(index).json; } catch (e) { /* jalur webhook */ }\n  const j = { ...detail, ...Object.fromEntries(Object.entries(item.json).filter(([, v]) => v !== null && v !== undefined)) };\n  const url = String(j.pdf_url);\n  let fileName = '';\n  try { fileName = decodeURIComponent(new URL(url).pathname.split('/').pop() || ''); } catch (e) {}\n  const base = fileName.replace(/\\.pdf$/i, '').replace(/[_+]+/g, ' ').replace(/\\s+/g, ' ').trim();\n  const fromTitle = String(j.title || '').match(/Nomor\\s+(\\d+)\\s+Tahun\\s+(\\d{4})/i);\n  const fromFile = base.match(/((?:19|20)\\d{2})\\s*(?:pkpu|kpt|kep)\\s*0*(\\d+)/i);\n  const yearMatch = fromTitle ? [fromTitle[2]] : (fromFile ? [fromFile[1]] : base.match(/(?:19|20)\\d{2}/));\n  const numberMatch = fromTitle ? [null, fromTitle[1]] : (fromFile ? [null, fromFile[2]] : base.match(/(?:nomor|no\\.?)\\s*(\\d+)/i));\n  return {\n    json: {\n      pdf_url: url,\n      source: j.source ?? 'JDIH KPU',\n      document_type: j.document_type ?? 'PKPU',\n      title: j.title ?? (base ? base.slice(0, 2000) : null),\n      document_number: j.document_number ?? (numberMatch ? numberMatch[1] : null),\n      year: j.year ?? (yearMatch ? Number(yearMatch[0]) : null),\n      legal_status: ['berlaku', 'tidak_berlaku'].includes(j.legal_status) ? j.legal_status : 'belum_diverifikasi',\n      retry_error_id: j.retry_error_id ?? retryErrorId,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
       },
       "id": "8ed8e34e-b986-4a81-8439-c507bab03865",
       "name": "Siapkan Dokumen",
@@ -422,7 +422,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3182,
+        3402,
         400
       ]
     },
@@ -444,7 +444,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3402,
+        3622,
         400
       ],
       "retryOnFail": true,
@@ -476,6 +476,19 @@
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node Crypto (Hitung Hash File) tidak meneruskan file binary.\n// Ambil kembali file PDF dari \"Download PDF\" untuk item yang sama.\nreturn $input.all().map((item, index) => {\n  const source = $('Download PDF').itemMatching(index);\n  if (!source || !source.binary || !source.binary.data) {\n    throw new Error('File PDF hasil download tidak ditemukan untuk ' + (item.json.pdf_url || 'item ' + index));\n  }\n  return { json: item.json, binary: source.binary, pairedItem: { item: index } };\n});\n"
+      },
+      "id": "34904819-a616-4dd2-a31a-e0320a42c177",
+      "name": "Gabungkan File & Hash",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2564,
+        400
+      ]
     }
   ],
   "pinData": {},
@@ -689,12 +702,12 @@
       "main": [
         [
           {
-            "node": "Extract PDF",
+            "node": "Kirim Status Processing ke Admin",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Kirim Status Processing ke Admin",
+            "node": "Gabungkan File & Hash",
             "type": "main",
             "index": 0
           }
@@ -706,6 +719,17 @@
         [
           {
             "node": "Kirim Status Sukses ke Admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gabungkan File & Hash": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF",
             "type": "main",
             "index": 0
           }
