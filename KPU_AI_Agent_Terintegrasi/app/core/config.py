@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     pinecone_api_key: str = ""
     pinecone_index_name: str = ""
-    pinecone_namespace: str = "kpu_kab_subang"
+    pinecone_namespace: str = "kpu_jdih"
     rag_top_k: int = Field(default=5, ge=1, le=10)
     rag_min_score: float = Field(default=0.55, ge=0.0, le=1.0)
     rag_allowed_hosts: list[str] = ["kab-subang.kpu.go.id", "jdih.kpu.go.id", "www.kpu.go.id", "peraturan.bpk.go.id", "peraturan.go.id"]

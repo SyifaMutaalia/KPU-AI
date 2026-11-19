@@ -28,7 +28,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://kpu-backend:8000/api/v1/admin/ingestion/error",
+        "url": "https://ai-agent-kpu-api.vercel.app/api/v1/admin/ingestion/error",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,

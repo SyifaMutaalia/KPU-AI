@@ -1,0 +1,14 @@
+# Bundle backend FastAPI di Vercel: hanya kode aplikasi yang dibutuhkan saat runtime.
+kpu-ai-agent-nextjs/
+tests/
+tessdata/
+infra/
+workflows/
+scripts/
+examples/
+alembic/
+alembic.ini
+data/
+**/*.bak
+**/__pycache__/
+.env
