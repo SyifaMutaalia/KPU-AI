@@ -1,7 +1,7 @@
 """Pilot: PDF scan -> page-by-page Markdown via OpenAI Responses PDF input.
 
 Run from repository root:
-python -m scripts.llm_extract_pdf --pdf data/kpu_doc/kpu_kab_subang/2018kpt1264.pdf --start-page 3 --end-page 3 --confirm-send
+python -m scripts.llm_extract_pdf --pdf data/kpu_doc/kpu_jdih/2018kpt1264.pdf --start-page 3 --end-page 3 --confirm-send
 
 No Tesseract, no Pinecone. Review every page against the original PDF.
 """

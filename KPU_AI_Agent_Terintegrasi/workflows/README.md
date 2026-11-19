@@ -24,13 +24,13 @@ Webhook (manual / Retry admin) ─► respon {accepted, execution_id} ─┤
 Error apa pun di WF1 ─► WF2 Error Trigger ─► Kirim Error ke Admin
 ```
 
-Index (`kpu-subang-rag`), namespace (`kpu_kab_subang`), dan text splitter tidak diubah.
+Index (`kpu-subang-rag`), namespace (`kpu_jdih`), dan text splitter tidak diubah.
 
 **Yang di-embed adalah teks asli hasil ekstraksi PDF**, bukan hasil tulis ulang AI. Node "Normalisasi ke Markdown / JSON" dihapus: menulis ulang seluruh peraturan dengan LLM berisiko memotong atau mengubah isi pasal, sehingga chatbot bisa mengutip teks yang tidak ada di dokumen aslinya.
 
 Setiap chunk di Pinecone membawa metadata yang dibutuhkan chatbot untuk menampilkan sumber dan menerapkan guardrail: `source_url`, `document_id`, `title`, `document_type`, `document_number`, `year`, `legal_status`, `file_hash`. `title` dan `legal_status` dibaca dari halaman detail JDIH. Jika status tidak terbaca, nilainya `belum_diverifikasi` dan jawaban chatbot diberi catatan. Dokumen `tidak_berlaku` tidak pernah dipakai sebagai bukti.
 
-Vektor lama yang dimasukkan sebelum perubahan ini tidak punya metadata tersebut, sehingga diabaikan chatbot. Sebaiknya kosongkan namespace `kpu_kab_subang` di konsol Pinecone, lalu jalankan **Pindai JDIH sekarang** dari halaman admin Dokumen.
+Vektor lama yang dimasukkan sebelum perubahan ini tidak punya metadata tersebut, sehingga diabaikan chatbot. Sebaiknya kosongkan namespace `kpu_jdih` di konsol Pinecone, lalu jalankan **Pindai JDIH sekarang** dari halaman admin Dokumen.
 
 ## Langkah pemasangan
 
@@ -59,7 +59,7 @@ Halaman **Dashboard → Dokumen** punya panel **Kontrol ingestion**:
 
 Tabel dokumen otomatis diperbarui setiap 15 detik selama ada dokumen `processing`. Jika WF2 mencatat error, banner merah muncul di semua halaman admin dan menu Error log menampilkan jumlahnya.
 
-Backend memerlukan `PINECONE_NAMESPACE=kpu_kab_subang` (default baru) dan `PINECONE_INDEX_NAME=kpu-subang-rag` agar chatbot membaca vektor dari WF1.
+Backend memerlukan `PINECONE_NAMESPACE=kpu_jdih` (default baru) dan `PINECONE_INDEX_NAME=kpu-subang-rag` agar chatbot membaca vektor dari WF1.
 
 ## Memanggil WF1 lewat webhook
 

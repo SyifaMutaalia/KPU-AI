@@ -1,6 +1,6 @@
 """Preview one PDF without manifest, Neon, OpenAI or Pinecone.
 
-Usage: python -m scripts.preview_one_pdf --pdf data/kpu_doc/kpu_kab_subang/NAME.pdf
+Usage: python -m scripts.preview_one_pdf --pdf data/kpu_doc/kpu_jdih/NAME.pdf
 """
 from __future__ import annotations
 
