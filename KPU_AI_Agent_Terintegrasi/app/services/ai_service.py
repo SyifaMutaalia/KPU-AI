@@ -28,15 +28,42 @@ IDENTITY_ANSWER = (
 
 OUT_OF_SCOPE_ANSWER = (
     "Saya dirancang untuk membantu informasi kepemiluan KPU Kabupaten Subang, jadi saya "
-    "belum dapat membantu pertanyaan di luar cakupan tersebut. Silakan tanyakan tentang "
-    "pemilu, pemilih, tahapan, atau peraturan kepemiluan."
+    "belum dapat membantu pertanyaan di luar cakupan tersebut. Contoh pertanyaan yang bisa "
+    "saya bantu: \"syarat jadi pemilih\", \"cara pindah TPS\", atau \"isi PKPU tentang "
+    "kampanye\"."
+)
+GREETING_ANSWER = (
+    "Halo! Saya AI Agent informasi kepemiluan KPU Kabupaten Subang. Silakan tanyakan "
+    "apa saja seputar pemilu, misalnya syarat menjadi pemilih, cara pindah TPS, atau "
+    "isi peraturan KPU. Jawaban saya disertai sumber dokumen resminya."
+)
+UNVERIFIED_NOTE = (
+    "Catatan: status keberlakuan sebagian dokumen sumber belum terverifikasi otomatis. "
+    "Periksa tautan dokumen di bawah untuk memastikan masih berlaku."
 )
 
 _ELECTION_TERMS = re.compile(
     r"\b(?:tahapan?|kpu|komisi pemilihan umum|pemilu|pemilihan|pilkada|pilpres|pileg|"
-    r"pemilih|dpt|daftar pemilih|tps|pps|ppk|kpps|pkpu|surat suara|"
-    r"kampanye|pencalonan|calon|peraturan|regulasi|pemungutan|"
-    r"penghitungan suara|rekapitulasi|e-?ppid|jdih|pasal|diktum|keputusan)\b",
+    r"pemilih|dpt|dptb|dpk|dps|daftar pemilih|tps|pps|ppk|kpps|pkpu|surat suara|"
+    r"kampanye|pencalonan|calon|caleg|capres|cawapres|cagub|cawagub|cabup|cawabup|"
+    r"peraturan|regulasi|pemungutan|penghitungan suara|rekapitulasi|e-?ppid|jdih|"
+    r"pasal|diktum|keputusan|memilih|dipilih|nyoblos|coblos|mencoblos|pencoblosan|"
+    r"hak suara|golput|bawaslu|panwas(?:lu)?|dkpp|partai|parpol|legislatif|dprd?|dpd|"
+    r"presiden|gubernur|bupati|walikota|wali kota|kepala daerah|e-?ktp|ktp|"
+    r"pindah memilih|pindah tps|formulir a5|saksi tps|kotak suara|bilik suara|tinta pemilu|"
+    r"hitung cepat|quick count|sirekap|silon|sipol|pantarlih|coklit|ad ?hoc|"
+    r"relawan demokrasi|pemilih pemula|sengketa pemilu|pelanggaran pemilu|"
+    r"politik uang|netralitas asn|dana kampanye|alat peraga kampanye|debat kandidat|"
+    r"masa tenang|"
+    r"undang-undang|perbawaslu)\b",
+    re.IGNORECASE,
+)
+_GREETING = re.compile(
+    r"^(?:halo+|hal+o|hai+|hi+|hello|hey|pagi|siang|sore|malam|"
+    r"selamat (?:pagi|siang|sore|malam)|assalamu'?alaikum(?: wr\.? ?wb\.?)?|"
+    r"permisi|tes|test|makasih|terima ?kasih|thanks|thank you|oke?|okay|sip|mantap|"
+    r"siapa kamu|perkenalkan dirimu|halo,? perkenalkan dirimu|hai,? perkenalkan dirimu)"
+    r"(?:[ ,]+(?:kak|kakak|min|admin|bang|bu|pak|ya|banget|kpu|ai|bot|semua|dong))*[ .!?]*$",
     re.IGNORECASE,
 )
 _ELECTION_EVENT_TERMS = re.compile(
@@ -161,12 +188,25 @@ def _personal_dpt_guidance() -> AgentResult:
 
 
 def _is_nonfactual(message: str) -> bool:
-    normalized = message.strip().lower().strip(".!? ")
-    return normalized in {
-        "halo", "hai", "hello", "hi", "terima kasih", "makasih",
-        "selamat pagi", "selamat siang", "selamat sore", "selamat malam",
-        "halo, perkenalkan dirimu", "hai, perkenalkan dirimu", "siapa kamu",
-    }
+    return bool(_GREETING.match(message.strip()))
+
+
+def _has_relevant_documents(message: str) -> bool:
+    """Pertanyaan sederhana tanpa kata kunci pemilu tetap dicoba ke Pinecone.
+
+    Hanya jika ada potongan dokumen relevan pertanyaan diteruskan ke agent;
+    jawaban tetap wajib bersitasi sehingga tidak membuka jalan halusinasi.
+    """
+    if len(message.split()) < 2:
+        return False
+    try:
+        from app.rag.search import search_official_documents
+
+        excerpts, _ = search_official_documents(message)
+    except Exception as exc:
+        logger.warning("Pemeriksaan relevansi dokumen gagal: %s", type(exc).__name__)
+        return False
+    return bool(excerpts)
 
 
 def _repair_from_evidence(
@@ -264,13 +304,19 @@ def _finalize(answer: str, evidence, question: str) -> AgentResult:
             answer,
         )
     cited_urls = [evidence.sources[i - 1] for i in sorted_ids]
+    if any(getattr(source, "kind", "web") == "dokumen" and getattr(source, "note", None) for source in cited_urls):
+        answer = answer.rstrip() + "\n\n" + UNVERIFIED_NOTE
     if docs:
         answer = "[DOKUMEN INTERNAL — STATUS HUKUM BELUM DIVERIFIKASI]\n\n" + answer
     return AgentResult(answer=answer, sources=cited_urls, grounded=bool(sites) and not bool(docs))
 
 
 def answer_question(message: str, history: list[tuple[str, str]]) -> AgentResult:
+    if _is_nonfactual(message):
+        return AgentResult(answer=GREETING_ANSWER, sources=[], grounded=False)
     intent = classify_intent(message)
+    if intent == "out_of_scope" and _has_relevant_documents(message):
+        intent = "election"
     if intent == "identity":
         return AgentResult(answer=IDENTITY_ANSWER, sources=[], grounded=False)
     if intent == "election" and _is_underspecified_timeline(message):
@@ -284,12 +330,6 @@ def answer_question(message: str, history: list[tuple[str, str]]) -> AgentResult
             grounded=False,
         )
     if intent == "out_of_scope":
-        if _is_nonfactual(message):
-            return AgentResult(
-                answer="Halo! Saya AI Agent informasi kepemiluan KPU Kabupaten Subang. Ada yang ingin ditanyakan?",
-                sources=[],
-                grounded=False,
-            )
         return AgentResult(answer=OUT_OF_SCOPE_ANSWER, sources=[], grounded=False)
 
     from langchain.agents import create_agent

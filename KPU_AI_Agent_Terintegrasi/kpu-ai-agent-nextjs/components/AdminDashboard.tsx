@@ -11,6 +11,8 @@ type Summary = {
   last_sync: string | null;
   workflows: Record<string, { status: string; last_execution_at: string | null }>;
   activities: { type: string; workflow: string; status: string; at: string | null; execution_id: string }[];
+  open_errors: number;
+  latest_error_at: string | null;
 };
 type N8nMonitor = {
   configured: boolean;
@@ -51,6 +53,7 @@ export default function AdminDashboard() {
   }, []);
 
   const metrics = [
+    ['Total dokumen', data?.documents.total ?? 0],
     ['Dokumen sukses', data?.documents.success ?? 0],
     ['Pending', data?.documents.pending ?? 0],
     ['Processing', data?.documents.processing ?? 0],
@@ -83,6 +86,7 @@ export default function AdminDashboard() {
           <article className="metric-card"><span>Chunk terkonfirmasi Pinecone</span><strong>{data.indexed_chunks ?? '—'}</strong></article>
           <article className="metric-card"><span>Pasal terindeks (jika tercatat)</span><strong>{data.indexed_pasal ?? '—'}</strong></article>
           <article className="metric-card"><span>Sinkronisasi terakhir</span><strong className="metric-date">{formatDate(data.last_sync)}</strong></article>
+          <article className={`metric-card ${data.open_errors ? 'metric-alert' : ''}`}><span>Error belum ditangani</span><strong>{data.open_errors}</strong></article>
         </section>
         <section className="admin-panel">
           <div className="panel-heading"><h2>Status ingestion tercatat</h2><Link href="/admin/dashboard/errors">Lihat error</Link></div>

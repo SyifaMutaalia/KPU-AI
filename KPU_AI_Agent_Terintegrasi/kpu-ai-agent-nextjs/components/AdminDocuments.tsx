@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import AdminShell from '@/components/AdminShell';
+import IngestionControl from '@/components/IngestionControl';
 
 type DocumentRow = {
   id: string; source_url: string; document_type: string | null; document_number: string | null;
@@ -34,10 +35,17 @@ export default function AdminDocuments() {
     finally { setLoading(false); }
   }, [page, status, submittedQuery]);
   useEffect(() => { void load(); }, [load]);
+  const hasProcessing = Boolean(data?.items.some((row) => row.status === 'processing'));
+  useEffect(() => {
+    if (!hasProcessing) return;
+    const timer = window.setInterval(() => { void load(); }, 15000);
+    return () => window.clearInterval(timer);
+  }, [hasProcessing, load]);
   function search(event: FormEvent) { event.preventDefault(); setPage(1); setSubmittedQuery(query.trim()); }
 
   return <AdminShell><div className="admin-content">
-    <header className="admin-heading"><div><p className="eyebrow">INGESTION</p><h1>Dokumen</h1><p>Status PostgreSQL dipisahkan dari konfirmasi insert Pinecone.</p></div></header>
+    <header className="admin-heading"><div><p className="eyebrow">INGESTION</p><h1>Dokumen</h1><p>Dokumen yang diunduh WF1, jumlah chunk hasil embedding, dan konfirmasi insert Pinecone.</p></div></header>
+    <IngestionControl onStarted={() => { window.setTimeout(() => void load(), 5000); }} />
     <form className="admin-filters" onSubmit={search}>
       <label>Status<select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">Semua</option><option value="pending">Pending</option><option value="processing">Processing</option><option value="success">Sukses</option><option value="failed">Gagal</option></select></label>
       <label className="search-field">Cari<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Judul, nomor, atau URL" maxLength={200} /></label>

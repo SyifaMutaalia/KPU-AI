@@ -15,6 +15,23 @@ export default function AdminShell({ children }: Props) {
   const [csrf, setCsrf] = useState('');
   const [error, setError] = useState('');
   const [n8nStatus, setN8nStatus] = useState('Memeriksa n8n...');
+  const [openErrors, setOpenErrors] = useState(0);
+
+  useEffect(() => {
+    if (!email) return;
+    let active = true;
+    async function poll() {
+      try {
+        const response = await fetch('/api/admin/dashboard/summary', { cache: 'no-store' });
+        if (!response.ok) return;
+        const summary = await response.json();
+        if (active) setOpenErrors(Number(summary.open_errors) || 0);
+      } catch { /* alert berikutnya dicoba pada interval berikut */ }
+    }
+    void poll();
+    const timer = window.setInterval(() => { void poll(); }, 60000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [email, pathname]);
 
   useEffect(() => {
     let active = true;
@@ -84,12 +101,13 @@ export default function AdminShell({ children }: Props) {
           <Link className={pathname === '/admin/dashboard' ? 'admin-nav active' : 'admin-nav'} href="/admin/dashboard">Ringkasan</Link>
           <Link className={pathname.includes('/workflows') ? 'admin-nav active' : 'admin-nav'} href="/admin/dashboard/workflows">Workflow n8n</Link>
           <Link className={pathname.includes('/documents') ? 'admin-nav active' : 'admin-nav'} href="/admin/dashboard/documents">Dokumen</Link>
-          <Link className={pathname.includes('/errors') ? 'admin-nav active' : 'admin-nav'} href="/admin/dashboard/errors">Error log</Link>
+          <Link className={pathname.includes('/errors') ? 'admin-nav active' : 'admin-nav'} href="/admin/dashboard/errors">Error log{openErrors > 0 && <span className="nav-badge">{openErrors}</span>}</Link>
         </nav>
         <div className="admin-user"><span>{email}</span><button className="button secondary" onClick={logout}>Keluar</button></div>
       </aside>
       <main className="admin-main">
         <div className="admin-n8n-status" role="status">{n8nStatus}</div>
+        {openErrors > 0 && <div className="admin-alert" role="alert"><b>⚠ {openErrors} error ingestion belum ditangani.</b><span>Workflow n8n melaporkan kegagalan. Periksa detail dan jalankan Retry bila perlu.</span><Link href="/admin/dashboard/errors">Lihat error log</Link></div>}
         {error && <div className="error-box" role="alert">{error}</div>}
         {children}
       </main>

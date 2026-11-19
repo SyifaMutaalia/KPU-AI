@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import AdminShell from '@/components/AdminShell';
+import { adminCsrfToken } from '@/lib/adminClient';
 
 type ErrorRow = {
   id: string; occurred_at: string; workflow: string; execution_id: string; node: string;
@@ -31,12 +32,7 @@ export default function AdminErrors() {
     if (!window.confirm(`Minta n8n menjalankan retry untuk ${item.workflow} / execution ${item.execution_id}? Permintaan yang telah dikirim tidak dapat diulang untuk mencegah duplikasi.`)) return;
     setNotice(''); setError('');
     try {
-      const csrf = await fetch('/api/admin/auth/csrf', { cache: 'no-store' }).then(async (response) => {
-        const value = await response.json();
-        if (!response.ok) throw new Error(value.detail || value.error || 'Gagal mendapatkan token CSRF.');
-        sessionStorage.setItem('admin-csrf-token', value.csrf_token);
-        return value.csrf_token as string;
-      });
+      const csrf = await adminCsrfToken();
       const response = await fetch(`/api/admin/dashboard/errors/${encodeURIComponent(item.id)}/retry`, {
         method: 'POST', headers: { 'X-CSRF-Token': csrf },
       });

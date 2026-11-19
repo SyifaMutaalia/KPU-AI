@@ -12,6 +12,9 @@ class ChatRequest(BaseModel):
 class Source(BaseModel):
     title: str
     url: str
+    # "dokumen" = file PDF yang ter-embed di Pinecone, "web" = halaman situs resmi.
+    kind: str = "web"
+    note: str | None = None
 
 
 class ChatResponse(BaseModel):

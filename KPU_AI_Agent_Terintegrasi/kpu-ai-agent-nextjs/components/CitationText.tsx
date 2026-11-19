@@ -1,4 +1,4 @@
-type Source = { title: string; url: string };
+type Source = { title: string; url: string; kind?: string; note?: string | null };
 
 /** Mengubah [1], [2], dst menjadi tautan yang jelas ke sumber resmi.
  * Referensi internal [D1] tetap teks karena belum ada URL terverifikasi.

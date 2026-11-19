@@ -21,6 +21,7 @@ from app.schemas.chat import Source
 
 logger = logging.getLogger(__name__)
 REVIEW_NAMESPACE = "kpu_review_2024_2026"
+PRODUCTION_LEGAL_STATUSES = ("berlaku", "belum_diverifikasi")
 _WORD = re.compile(r"[a-z0-9]+")
 _STOP_WORDS = {
     "apa",
@@ -187,7 +188,10 @@ def search_official_documents(query: str) -> tuple[list[dict], list[Source]]:
         if not getattr(s, "rag_enabled", True):
             return [], []
         store = get_vectorstore()
-        filter_expression = {"legal_status": {"$eq": "berlaku"}}
+        # Dokumen yang dicabut/tidak berlaku tidak pernah dipakai sebagai bukti.
+        # "belum_diverifikasi" = status di JDIH tidak terbaca saat ingestion;
+        # jawaban akan diberi catatan agar pengguna memeriksa tautan sumber.
+        filter_expression = {"legal_status": {"$in": list(PRODUCTION_LEGAL_STATUSES)}}
 
     namespace = REVIEW_NAMESPACE if mode == "review" else s.pinecone_namespace
     k = (
@@ -232,7 +236,7 @@ def search_official_documents(query: str) -> tuple[list[dict], list[Source]]:
         excerpts.append(excerpt)
         if official_url and official_url not in seen_urls:
             seen_urls.add(official_url)
-            sources.append(Source(title=title, url=official_url))
+            sources.append(Source(title=title, url=official_url, kind="dokumen"))
     logger.info(
         "RAG mode=%s namespace=%s results=%s query_chars=%s",
         mode,

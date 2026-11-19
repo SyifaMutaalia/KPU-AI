@@ -17,14 +17,20 @@ Export tidak berisi secret. Setelah impor, pilih credential pada node yang diseb
 Jadwal 06.00 ─► JDIH ─► cek ingestion.documents ─┐
 Webhook (manual / Retry admin) ─► respon {accepted, execution_id} ─┤
                                                    ▼
-          Siapkan Dokumen ─► Download PDF ─► Hitung Hash File ─► Extract PDF
-          ─► Normalisasi (AI) ─► Pinecone (insert) ─► Rangkum Hasil Upsert
-          ─► Kirim Status Sukses ke Admin  (status=success, pinecone_confirmed=true)
+          Siapkan Dokumen ─► Download PDF ─► Hitung Hash File ─┬► Kirim Status Processing ke Admin
+                                                               └► Extract PDF ─► Pinecone (insert)
+          ─► Rangkum Hasil Upsert ─► Kirim Status Sukses ke Admin  (status=success, pinecone_confirmed=true)
 
 Error apa pun di WF1 ─► WF2 Error Trigger ─► Kirim Error ke Admin
 ```
 
-Index (`kpu-subang-rag`), namespace (`kpu_kab_subang`), dan text splitter tidak diubah. Data Loader hanya diberi metadata `source_url`, `file_hash`, `title`, `document_type` agar tiap chunk bisa dikaitkan kembali ke dokumennya.
+Index (`kpu-subang-rag`), namespace (`kpu_kab_subang`), dan text splitter tidak diubah.
+
+**Yang di-embed adalah teks asli hasil ekstraksi PDF**, bukan hasil tulis ulang AI. Node "Normalisasi ke Markdown / JSON" dihapus: menulis ulang seluruh peraturan dengan LLM berisiko memotong atau mengubah isi pasal, sehingga chatbot bisa mengutip teks yang tidak ada di dokumen aslinya.
+
+Setiap chunk di Pinecone membawa metadata yang dibutuhkan chatbot untuk menampilkan sumber dan menerapkan guardrail: `source_url`, `document_id`, `title`, `document_type`, `document_number`, `year`, `legal_status`, `file_hash`. `title` dan `legal_status` dibaca dari halaman detail JDIH. Jika status tidak terbaca, nilainya `belum_diverifikasi` dan jawaban chatbot diberi catatan. Dokumen `tidak_berlaku` tidak pernah dipakai sebagai bukti.
+
+Vektor lama yang dimasukkan sebelum perubahan ini tidak punya metadata tersebut, sehingga diabaikan chatbot. Sebaiknya kosongkan namespace `kpu_kab_subang` di konsol Pinecone, lalu jalankan **Pindai JDIH sekarang** dari halaman admin Dokumen.
 
 ## Langkah pemasangan
 
@@ -43,6 +49,17 @@ Index (`kpu-subang-rag`), namespace (`kpu_kab_subang`), dan text splitter tidak 
 4. **Impor WF1** dengan cara yang sama. Pilih credential *KPU Ingestion Callback Header* pada node **Kirim Status Sukses ke Admin**. Buka **Settings → Error Workflow** dan pastikan terpilih WF2 (export sudah berisi ID `mESA9ldYO9uzhHzA`; jika ID WF2 Anda berbeda, pilih ulang). Simpan dan aktifkan.
 
 Impor ke workflow yang sudah ada (bukan membuat workflow baru) supaya ID workflow dan URL webhook tetap sama.
+
+## Kontrol dari halaman admin
+
+Halaman **Dashboard → Dokumen** punya panel **Kontrol ingestion**:
+
+- **Pindai JDIH sekarang**: menjalankan WF1 seperti jadwal harian (dokumen yang sudah `success` dilewati).
+- **Ingest PDF ini**: memproses satu URL PDF resmi (host harus ada di `RAG_ALLOWED_HOSTS`, mis. `jdih.kpu.go.id`).
+
+Tabel dokumen otomatis diperbarui setiap 15 detik selama ada dokumen `processing`. Jika WF2 mencatat error, banner merah muncul di semua halaman admin dan menu Error log menampilkan jumlahnya.
+
+Backend memerlukan `PINECONE_NAMESPACE=kpu_kab_subang` (default baru) dan `PINECONE_INDEX_NAME=kpu-subang-rag` agar chatbot membaca vektor dari WF1.
 
 ## Memanggil WF1 lewat webhook
 

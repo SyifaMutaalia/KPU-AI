@@ -30,11 +30,16 @@ class Evidence:
 
 
 def build_tools(evidence: Evidence):
-    def get_or_add_source(title: str, url: str) -> int:
+    def get_or_add_source(
+        title: str, url: str, kind: str = "web", note: str | None = None
+    ) -> int:
         for i, item in enumerate(evidence.sources, 1):
             if item.url == url:
+                if kind == "dokumen":
+                    item.kind = "dokumen"
+                    item.note = item.note or note
                 return i
-        evidence.sources.append(Source(title=title, url=url))
+        evidence.sources.append(Source(title=title, url=url, kind=kind, note=note))
         return len(evidence.sources)
 
     @tool
@@ -52,7 +57,13 @@ def build_tools(evidence: Evidence):
         for excerpt in excerpts:
             url = excerpt.get("source_url") or ""
             if url:
-                idx = get_or_add_source(excerpt["title"], url)
+                unverified = excerpt.get("legal_status") != "berlaku"
+                idx = get_or_add_source(
+                    excerpt["title"],
+                    url,
+                    kind="dokumen",
+                    note="Status keberlakuan belum diverifikasi" if unverified else None,
+                )
                 excerpt["id"] = idx
                 evidence.source_evidence.setdefault(idx, []).append(
                     "\n".join(
@@ -61,6 +72,7 @@ def build_tools(evidence: Evidence):
                             f"Jenis dokumen: {excerpt.get('document_type') or ''}",
                             f"Nomor/tahun: {excerpt.get('document_number') or ''}/{excerpt.get('year') or ''}",
                             f"Bagian: {excerpt.get('legal_reference') or ''}",
+                            f"Status hukum: {excerpt.get('legal_status') or 'belum_diverifikasi'}",
                             f"Kutipan: {excerpt.get('text') or ''}",
                         )
                         if part.strip()
