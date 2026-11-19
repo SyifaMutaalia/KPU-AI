@@ -32,26 +32,16 @@ Jalankan bootstrap secara interaktif pada terminal privat. Password diminta mela
 
 Cookie sesi admin opaque, `HttpOnly`, `Secure` di production, `SameSite` sesuai konfigurasi, memiliki masa berlaku dan tersimpan sebagai digest di DB. Mutasi memerlukan CSRF header dan pemeriksaan origin. Rate limit login/reset tersimpan di PostgreSQL agar berlaku lintas worker. Reset memakai token acak sekali pakai; DB hanya menyimpan hash, link berlaku 30 menit, dan respons lupa password tidak mengungkap keberadaan akun. Reset menginvalidasi sesi yang ada. SMTP belum tersedia di repository, sehingga isi variabel SMTP dari provider organisasi sebelum mengaktifkan reset email.
 
-## WF1 ingestion dan status Pinecone
+## WF1, WF2, dan Retry
 
-Repository ini tidak memiliki export WF1 yang sebenarnya dan tidak menyediakan kredensial/index/source WF1. Karena itu, `workflows/wf1-success-callback.json` adalah **subworkflow helper**, bukan pengganti WF1. Impor helper tersebut, buat credential HTTP Header Auth `KPU Ingestion Callback Header` dengan header `X-Ingestion-Key`, lalu panggil helper dari workflow ingestion:
+Export WF1 (`workflows/WF1 - Ingestion PDF KPU per Pasal.json`) dan WF2 (`workflows/WF2- Error Handler dan Monitoring KPU (execution log).json`) sudah terhubung ke backend admin. Panduan lengkap impor, credential, dan alur Retry ada di [`workflows/README.md`](./workflows/README.md).
 
-1. (Opsional tetapi disarankan) panggil pada awal eksekusi dengan `pinecone_confirmed=false`, `status=processing`.
-2. Panggil lagi hanya pada jalur sukses setelah node Pinecone menerima upsert. Kirim `pinecone_confirmed=true`, `status=success`, `workflow=WF1`, `$execution.id`, `document_id`, `source_url`, metadata dokumen, `file_hash`, namespace WF1 yang sudah dikonfigurasi, serta jumlah chunk/Pasal yang benar-benar diketahui.
-3. Jika jalur ingestion gagal dan masih berjalan, kirim `status=failed` dengan `pinecone_confirmed=false`. Jangan mengirim sukses hanya karena ekstraksi atau embedding selesai.
-4. Jangan mengubah namespace/index atau chunking Pasal. Jika Pinecone menerima upsert tetapi callback gagal, jalankan ulang callback dengan idempotency yang sama; jangan menyimpulkan bahwa insert Pinecone gagal.
+- WF1 memanggil `POST /api/v1/admin/ingestion/callback` hanya setelah Pinecone menerima upsert (`status=success`, `pinecone_confirmed=true`, jumlah chunk/Pasal, `file_hash`, namespace).
+- WF2 (Error Workflow untuk WF1) memanggil `POST /api/v1/admin/ingestion/error`. Endpoint ini idempotent per workflow/eksekusi/node, menyimpan error dengan status `failed`, dan menandai Retry asal sebagai `retry_failed` jika eksekusi yang gagal adalah eksekusi retry.
+- Kedua endpoint memerlukan header `X-Ingestion-Key` = `INGESTION_CALLBACK_SECRET`.
+- Tombol Retry mengirim ke `ADMIN_RETRY_WEBHOOK_URL` (`http://n8n:5678/webhook/kpu-ingest-pdf`) dengan header `X-Admin-Retry-Secret`; webhook WF1 langsung membalas `{"accepted": true, "execution_id": "..."}`.
 
-`scripts/ingest_pdfs.py` juga menulis keberhasilan ke PostgreSQL sesudah seluruh upsert Pinecone untuk dokumen tersebut kembali sukses. Log DB gagal akan menghentikan pencatatan state lokal sehingga proses dapat diulang dengan ID vektor deterministik.
-
-Callback internal `POST /api/v1/admin/ingestion/callback` memerlukan `X-Ingestion-Key` yang sama dengan `INGESTION_CALLBACK_SECRET`. Jangan taruh secret di workflow export; simpan pada n8n credential dan `.env` server.
-
-## WF2 error workflow
-
-Impor `workflows/error-handler.json`; panduan node/credential berada di [`workflows/README.md`](./workflows/README.md). Di n8n, buka **WF1 → Settings → Error Workflow**, pilih `KPU WF2 - Error Handler`, lalu simpan WF1. Error workflow mencatat error secara idempotent di `ingestion.error_logs`, memperbarui status pencatatan WF2, dan mengirim notifikasi Telegram/email setelah credential dan penerima diisi.
-
-n8n Error Trigger menerima kegagalan dari workflow yang dimulai trigger/scheduler, bukan eksekusi manual editor. Node dengan `Continue On Fail`, error output yang ditangani, atau jalur yang sudah menangani error mungkin tidak memanggil Error Workflow. Untuk kegagalan yang ditangani, hubungkan jalur error secara eksplisit ke pencatatan/notifikasi. Uji di staging; jangan memicu kegagalan buatan pada workflow produksi.
-
-WF1 tidak tersedia di repository, jadi retry membutuhkan webhook khusus yang dibuat dan diuji di WF1. Set `ADMIN_RETRY_WEBHOOK_URL` ke webhook internal tersebut dan `ADMIN_RETRY_WEBHOOK_SECRET` setelah webhook menerapkan validasi `X-Admin-Retry-Secret`, `Idempotency-Key`, dan mengembalikan JSON `{"accepted": true, "execution_id": "..."}` hanya setelah eksekusi benar-benar diterima. Teruskan `error_id` sebagai `retry_error_id` ke callback helper WF1; status error asal baru menjadi `retry_succeeded` setelah callback sukses terkonfirmasi, atau `retry_failed` setelah workflow retry gagal. Rancang ulang pemrosesan agar idempotent terhadap file hash dan ID vektor yang sama. Jangan set URL contoh yang belum ada. API mengunci retry sebelum dispatch untuk mencegah duplikasi; timeout berarti status dispatch belum pasti dan perlu investigasi operator, bukan klik ulang. `accepted` berarti n8n menerima permintaan, **bukan** ingestion sukses.
+`scripts/ingest_pdfs.py` juga menulis keberhasilan ke PostgreSQL sesudah seluruh upsert Pinecone untuk dokumen tersebut kembali sukses.
 
 ## Konfigurasi
 

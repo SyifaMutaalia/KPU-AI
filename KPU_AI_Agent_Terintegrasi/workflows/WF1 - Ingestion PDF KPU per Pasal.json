@@ -41,8 +41,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1264,
-        208
+        2164,
+        400
       ]
     },
     {
@@ -55,8 +55,8 @@
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
       "position": [
-        1472,
-        208
+        2622,
+        400
       ]
     },
     {
@@ -72,8 +72,8 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.3,
       "position": [
-        1568,
-        416
+        2718,
+        616
       ],
       "id": "33044008-e262-4477-8584-208d8e92807a",
       "name": "OpenAI Chat Model",
@@ -100,8 +100,8 @@
       "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
       "typeVersion": 1.4,
       "position": [
-        2032,
-        208
+        3182,
+        400
       ],
       "id": "ec9ca6ab-718d-431e-8f4b-51744cfdb0e5",
       "name": "Pinecone Vector Store",
@@ -121,8 +121,8 @@
       "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
       "typeVersion": 1.2,
       "position": [
-        1984,
-        400
+        3134,
+        600
       ],
       "id": "40c0b5be-448d-4f89-b5ad-af4dad51a5c9",
       "name": "Embeddings OpenAI",
@@ -244,8 +244,8 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
       "position": [
-        1696,
-        208
+        2846,
+        400
       ],
       "id": "f46f898b-d61a-462d-8fbf-2a35fbe5a3d3",
       "name": "Normalisasi ke Markdown / JSON",
@@ -257,7 +257,22 @@
         "options": {
           "metadata": {
             "metadataValues": [
-              {}
+              {
+                "name": "source_url",
+                "value": "={{ $('Siapkan Dokumen').item.json.pdf_url }}"
+              },
+              {
+                "name": "file_hash",
+                "value": "={{ $('Hitung Hash File').item.json.file_hash }}"
+              },
+              {
+                "name": "title",
+                "value": "={{ $('Siapkan Dokumen').item.json.title ?? '' }}"
+              },
+              {
+                "name": "document_type",
+                "value": "={{ $('Siapkan Dokumen').item.json.document_type ?? '' }}"
+              }
             ]
           }
         }
@@ -265,8 +280,8 @@
       "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
       "typeVersion": 1.1,
       "position": [
-        2160,
-        416
+        3310,
+        616
       ],
       "id": "c112e403-7b25-46be-94a1-0ea6ec31e8f2",
       "name": "Default Data Loader"
@@ -326,11 +341,142 @@
       "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
       "typeVersion": 1,
       "position": [
-        2256,
-        624
+        3406,
+        824
       ],
       "id": "5ddb4db8-0bbd-440f-8ea5-683203bc114a",
       "name": "Recursive Character Text Splitter"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input dari webhook: manual ingest ({ pdf_url, title?, ... }) atau Retry dari dashboard admin ({ error_id, ... }).\nconst body = $input.first().json.body ?? {};\nconst pick = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);\nconst pdfUrl = pick(body.pdf_url);\nif (pdfUrl && !/^https:\\/\\/[^\\s]+$/i.test(pdfUrl)) {\n  throw new Error('pdf_url harus berupa URL https.');\n}\nconst yearNum = Number(body.year);\nreturn [{\n  json: {\n    pdf_url: pdfUrl,\n    retry_error_id: pick(body.retry_error_id) ?? pick(body.error_id),\n    source: pick(body.source) ?? (pdfUrl ? 'Webhook' : 'Retry Admin'),\n    document_type: pick(body.document_type),\n    document_number: pick(body.document_number),\n    title: pick(body.title),\n    year: Number.isInteger(yearNum) && yearNum >= 1800 && yearNum <= 2200 ? yearNum : null,\n  },\n}];\n"
+      },
+      "id": "29785b37-ada6-471b-abb0-259a5c7847e6",
+      "name": "Normalisasi Input Webhook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ accepted: true, execution_id: String($execution.id) }) }}",
+        "options": {}
+      },
+      "id": "c20be366-c74b-48d9-8c7d-afe35e88fc39",
+      "name": "Kirim Konfirmasi Diterima",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1232,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "6eca01f7-ca4c-4655-a7a9-fbf6cf263f7f",
+              "leftValue": "={{ $json.pdf_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1440,
+        208
+      ],
+      "id": "de9dda7b-d73c-4eaa-a5cf-0b6edecd4415",
+      "name": "Ada pdf_url?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Menyatukan jalur webhook dan jadwal harian sebelum download PDF.\nlet retryErrorId = null;\ntry {\n  if ($('Normalisasi Input Webhook').isExecuted) {\n    retryErrorId = $('Normalisasi Input Webhook').first().json.retry_error_id ?? null;\n  }\n} catch (e) { /* eksekusi dari jadwal */ }\n\nreturn $input.all().map((item, index) => {\n  const j = item.json;\n  const url = String(j.pdf_url);\n  let fileName = '';\n  try { fileName = decodeURIComponent(new URL(url).pathname.split('/').pop() || ''); } catch (e) {}\n  const base = fileName.replace(/\\.pdf$/i, '').replace(/[_+]+/g, ' ').replace(/\\s+/g, ' ').trim();\n  const yearMatch = base.match(/\\b(?:19|20)\\d{2}\\b/);\n  const numberMatch = base.match(/(?:nomor|no\\.?|pkpu)\\s*(\\d+)/i);\n  return {\n    json: {\n      pdf_url: url,\n      source: j.source ?? 'JDIH KPU',\n      document_type: j.document_type ?? 'PKPU',\n      title: j.title ?? (base ? base.slice(0, 2000) : null),\n      document_number: j.document_number ?? (numberMatch ? numberMatch[1] : null),\n      year: j.year ?? (yearMatch ? Number(yearMatch[0]) : null),\n      retry_error_id: j.retry_error_id ?? retryErrorId,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+      },
+      "id": "8ed8e34e-b986-4a81-8439-c507bab03865",
+      "name": "Siapkan Dokumen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1856,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "action": "hash",
+        "type": "SHA256",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "dataPropertyName": "file_hash",
+        "encoding": "hex"
+      },
+      "id": "c82c7d7a-a699-4d4d-a48a-def826f20abc",
+      "name": "Hitung Hash File",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        2364,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Output Pinecone (mode insert) = satu item per chunk yang berhasil di-upsert.\n// Status sukses hanya dikirim dari sini, yaitu setelah Pinecone menerima upsert.\nconst groups = new Map();\n$input.all().forEach((item, i) => {\n  const meta = item.json.metadata ?? {};\n  let doc = null;\n  let fileHash = null;\n  try { doc = $('Siapkan Dokumen').itemMatching(i).json; } catch (e) {}\n  try { fileHash = $('Hitung Hash File').itemMatching(i).json.file_hash; } catch (e) {}\n  const sourceUrl = meta.source_url || doc?.pdf_url;\n  if (!sourceUrl) {\n    throw new Error('source_url hasil upsert Pinecone tidak diketahui; callback admin dibatalkan.');\n  }\n  if (!groups.has(sourceUrl)) {\n    groups.set(sourceUrl, { doc: doc ?? {}, fileHash: meta.file_hash || fileHash || null, chunks: 0, pasal: new Set() });\n  }\n  const g = groups.get(sourceUrl);\n  g.chunks += 1;\n  for (const m of String(item.json.pageContent ?? '').matchAll(/\\bPasal\\s+(\\d+[A-Z]?)\\b/g)) g.pasal.add(m[1]);\n});\n\nreturn [...groups.entries()].map(([sourceUrl, g]) => ({\n  json: {\n    workflow: 'WF1',\n    execution_id: String($execution.id),\n    status: 'success',\n    source_url: sourceUrl,\n    document_type: g.doc.document_type ?? null,\n    document_number: g.doc.document_number ?? null,\n    title: g.doc.title ?? null,\n    year: g.doc.year ?? null,\n    file_hash: g.fileHash,\n    namespace: 'kpu_kab_subang',\n    chunks_count: g.chunks,\n    pasal_count: g.pasal.size || null,\n    pinecone_confirmed: true,\n    retry_error_id: g.doc.retry_error_id ?? null,\n  },\n}));\n"
+      },
+      "id": "ea0ff639-beb2-486b-a80e-53d33cd36750",
+      "name": "Rangkum Hasil Upsert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3482,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://kpu-backend:8000/api/v1/admin/ingestion/callback",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ ...$json, document_id: 'jdih-' + $json.source_url.hash('sha256') }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "0c8acbae-a130-41af-ac9b-a83bbea516b8",
+      "name": "Kirim Status Sukses ke Admin",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3702,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
     }
   ],
   "pinData": {},
@@ -339,7 +485,7 @@
       "main": [
         [
           {
-            "node": "Download PDF",
+            "node": "Normalisasi Input Webhook",
             "type": "main",
             "index": 0
           }
@@ -350,7 +496,7 @@
       "main": [
         [
           {
-            "node": "Extract PDF",
+            "node": "Hitung Hash File",
             "type": "main",
             "index": 0
           }
@@ -380,8 +526,14 @@
       ]
     },
     "Pinecone Vector Store": {
-      "ai_tool": [
-        []
+      "main": [
+        [
+          {
+            "node": "Rangkum Hasil Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Embeddings OpenAI": {
@@ -421,7 +573,7 @@
       "main": [
         [
           {
-            "node": "Download PDF",
+            "node": "Siapkan Dokumen",
             "type": "main",
             "index": 0
           }
@@ -504,12 +656,86 @@
           }
         ]
       ]
+    },
+    "Normalisasi Input Webhook": {
+      "main": [
+        [
+          {
+            "node": "Kirim Konfirmasi Diterima",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kirim Konfirmasi Diterima": {
+      "main": [
+        [
+          {
+            "node": "Ada pdf_url?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ada pdf_url?": {
+      "main": [
+        [
+          {
+            "node": "Siapkan Dokumen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "02 - Ambil Daftar Dokumen JDIH",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Siapkan Dokumen": {
+      "main": [
+        [
+          {
+            "node": "Download PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hitung Hash File": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rangkum Hasil Upsert": {
+      "main": [
+        [
+          {
+            "node": "Kirim Status Sukses ke Admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate"
+    "binaryMode": "separate",
+    "errorWorkflow": "mESA9ldYO9uzhHzA"
   },
   "versionId": "1b39d209-2041-4efc-90ba-e2f104623bab",
   "meta": {

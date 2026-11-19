@@ -58,6 +58,8 @@ from app.schemas.admin import (
     ForgotPasswordIn,
     IngestionCallbackIn,
     IngestionCallbackOut,
+    IngestionErrorCallbackIn,
+    IngestionErrorCallbackOut,
     ResetPasswordIn,
     RetryOut,
 )
@@ -640,15 +642,21 @@ def retry_error(
     )
 
 
+def _require_ingestion_key(x_ingestion_key: str) -> None:
+    configured = get_settings().ingestion_callback_secret
+    if not configured or not hmac.compare_digest(
+        x_ingestion_key.encode(), configured.encode()
+    ):
+        raise HTTPException(status_code=401, detail="Kunci callback tidak valid.")
+
+
 @router.post("/ingestion/callback", response_model=IngestionCallbackOut)
 def ingestion_callback(
     payload: IngestionCallbackIn,
     x_ingestion_key: str = Header(default="", alias="X-Ingestion-Key"),
     db: Session = Depends(get_db),
 ):
-    configured = get_settings().ingestion_callback_secret
-    if not configured or not hmac.compare_digest(x_ingestion_key, configured):
-        raise HTTPException(status_code=401, detail="Kunci callback tidak valid.")
+    _require_ingestion_key(x_ingestion_key)
     if payload.status == "success" and not payload.pinecone_confirmed:
         raise HTTPException(
             status_code=422,
@@ -744,4 +752,83 @@ def ingestion_callback(
     db.commit()
     return IngestionCallbackOut(
         status=document.status, document_id=payload.document_id, run_id=run.id
+    )
+
+
+_ERROR_MESSAGE_LIMIT = 2000
+_ERROR_STACK_LIMIT = 4000
+
+
+@router.post("/ingestion/error", response_model=IngestionErrorCallbackOut)
+def ingestion_error_callback(
+    payload: IngestionErrorCallbackIn,
+    x_ingestion_key: str = Header(default="", alias="X-Ingestion-Key"),
+    db: Session = Depends(get_db),
+):
+    """Dipanggil WF2 (Error Trigger n8n). Idempotent per workflow/execution/node."""
+    _require_ingestion_key(x_ingestion_key)
+    node = (payload.node or "").strip()[:255]
+    error = db.scalar(
+        select(IngestionErrorLog).where(
+            IngestionErrorLog.workflow == payload.workflow,
+            IngestionErrorLog.execution_id == payload.execution_id,
+            IngestionErrorLog.node == node,
+        )
+    )
+    created = error is None
+    if created:
+        details = {
+            key: value
+            for key, value in {
+                "workflow_id": payload.workflow_id,
+                "mode": payload.mode,
+                "retry_of": payload.retry_of,
+                "execution_url": payload.execution_url,
+                "stack": (payload.stack or "")[:_ERROR_STACK_LIMIT] or None,
+            }.items()
+            if value
+        }
+        error = IngestionErrorLog(
+            workflow=payload.workflow,
+            execution_id=payload.execution_id,
+            node=node,
+            message=payload.message[:_ERROR_MESSAGE_LIMIT],
+            status="failed",
+            details=json.dumps(details, ensure_ascii=False),
+        )
+        db.add(error)
+
+    # Eksekusi ini mungkin hasil Retry dari dashboard: tandai error asal gagal.
+    originals = db.scalars(
+        select(IngestionErrorLog).where(
+            IngestionErrorLog.retry_execution_id == payload.execution_id,
+            IngestionErrorLog.status == "retry_requested",
+        )
+    ).all()
+    for original in originals:
+        original.status = "retry_failed"
+        _audit(
+            db,
+            None,
+            "ingestion.retry_failed",
+            "ingestion_error",
+            original.id,
+            {"execution_id": payload.execution_id},
+        )
+
+    # WF1 mencatat run dengan nama pendek ("WF1"), WF2 mengirim nama workflow n8n.
+    for run in db.scalars(
+        select(IngestionRun).where(
+            IngestionRun.execution_id == payload.execution_id,
+            IngestionRun.status == "processing",
+        )
+    ).all():
+        run.status = "failed"
+        run.completed_at = utcnow()
+    db.commit()
+    return IngestionErrorCallbackOut(
+        error_id=error.id,
+        status=error.status,
+        created=created,
+        retry_marked_failed=len(originals),
     )

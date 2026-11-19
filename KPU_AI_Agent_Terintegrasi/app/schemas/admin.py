@@ -172,3 +172,25 @@ class IngestionCallbackOut(BaseModel):
     status: str
     document_id: str
     run_id: str
+
+
+class IngestionErrorCallbackIn(BaseModel):
+    """Error yang dikirim WF2 (n8n Error Trigger) ke backend."""
+
+    model_config = ConfigDict(extra="forbid")
+    workflow: str = Field(min_length=1, max_length=120)
+    workflow_id: str | None = Field(default=None, max_length=128)
+    execution_id: str = Field(min_length=1, max_length=128)
+    node: str | None = Field(default=None, max_length=255)
+    message: str = Field(min_length=1, max_length=20000)
+    stack: str | None = Field(default=None, max_length=20000)
+    mode: str | None = Field(default=None, max_length=64)
+    retry_of: str | None = Field(default=None, max_length=128)
+    execution_url: str | None = Field(default=None, max_length=2048)
+
+
+class IngestionErrorCallbackOut(BaseModel):
+    error_id: str
+    status: str
+    created: bool
+    retry_marked_failed: int

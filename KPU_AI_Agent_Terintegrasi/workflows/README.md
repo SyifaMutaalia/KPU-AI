@@ -1,61 +1,65 @@
-# n8n workflows (sanitized exports)
+# Workflow n8n KPU dan integrasinya dengan halaman admin
 
-The repository does not contain the original WF1 ingestion export. Do not replace it with a guessed workflow: it depends on the existing source, review/approval nodes, Pinecone node, and configured index/namespace. The available files are:
+Folder ini berisi export dua workflow yang berjalan di n8n:
 
-- `wf1-success-callback.json`: a subworkflow helper to call after a Pinecone upsert is confirmed.
-- `error-handler.json`: WF2 Error Trigger, redacted normalization, idempotent PostgreSQL persistence, and Telegram/email notification nodes.
+| File | Workflow | Hubungan ke halaman admin |
+| --- | --- | --- |
+| `WF1 - Ingestion PDF KPU per Pasal.json` | Ingestion PDF JDIH → Pinecone | Setelah Pinecone menerima upsert, node **Kirim Status Sukses ke Admin** memanggil `POST /api/v1/admin/ingestion/callback` → muncul di **Dashboard → Documents**. Webhook-nya juga menjadi target tombol **Retry** di **Dashboard → Errors**. |
+| `WF2- Error Handler dan Monitoring KPU (execution log).json` | Error Trigger | Node **Kirim Error ke Admin** memanggil `POST /api/v1/admin/ingestion/error` → muncul di **Dashboard → Errors** dengan status `failed` (bisa di-Retry). |
 
-Both exports are inactive and contain no credentials or provider tokens. Import each JSON file from the n8n editor. Assign credentials after import; placeholder credential IDs/names and recipient fields are not credentials.
+Halaman **Dashboard → Workflows** membaca daftar workflow dan 100 eksekusi terbaru langsung dari n8n REST API (`N8N_API_URL` + `N8N_API_KEY`).
 
-## PostgreSQL and notifications
+Export tidak berisi secret. Setelah impor, pilih credential pada node yang disebut di bawah.
 
-Create a PostgreSQL credential named `KPU Monitoring PostgreSQL` that connects to the FastAPI app database (host `postgres`, port `5432`, database/user/password from private `APP_DB_*` values). Do not use the n8n internal DB (`POSTGRES_DB`) or its superuser credential for application monitoring. Assign the app credential to **Persist Error in PostgreSQL**.
+## Alur data
 
-Create a Telegram credential named `KPU Monitoring Telegram` and set a real chat ID on **Notify Telegram**. Create an SMTP credential named `KPU Monitoring SMTP`, and set the verified sender and administrator recipient on **Notify Email**. Configure at least one notifier; disable the other unconfigured node. Notification provider failures do not erase the error log already committed by PostgreSQL.
+```
+Jadwal 06.00 ─► JDIH ─► cek ingestion.documents ─┐
+Webhook (manual / Retry admin) ─► respon {accepted, execution_id} ─┤
+                                                   ▼
+          Siapkan Dokumen ─► Download PDF ─► Hitung Hash File ─► Extract PDF
+          ─► Normalisasi (AI) ─► Pinecone (insert) ─► Rangkum Hasil Upsert
+          ─► Kirim Status Sukses ke Admin  (status=success, pinecone_confirmed=true)
 
-The Code node stores only workflow/execution identifiers, node, a bounded redacted error message, and a small normalized detail object. It does not serialize full execution input, authorization headers, or secrets. Review your provider's retention and access controls.
-
-## WF1 integration and credential
-
-Create an n8n HTTP Header Auth credential named `KPU Ingestion Callback Header`, header name `X-Ingestion-Key`, and set its value to the same private `INGESTION_CALLBACK_SECRET` configured in the backend. Assign it to **Record ingestion status** in the callback helper.
-
-Call the helper with a JSON object containing:
-
-```json
-{
-  "workflow": "WF1",
-  "execution_id": "n8n execution ID",
-  "status": "processing",
-  "document_id": "stable document identifier",
-  "source_url": "source URL",
-  "document_type": "document type",
-  "document_number": "document number",
-  "title": "document title",
-  "year": 2026,
-  "file_hash": "SHA-256 of the current file",
-  "namespace": "the existing configured Pinecone namespace",
-  "chunks_count": 0,
-  "pasal_count": null,
-  "pinecone_confirmed": false,
-  "retry_error_id": null
-}
+Error apa pun di WF1 ─► WF2 Error Trigger ─► Kirim Error ke Admin
 ```
 
-Invoke it at start (or set processing through your existing DB node), then only after Pinecone's successful upsert response set `pinecone_confirmed=true`, include the actual counts, and call it again. The helper explicitly returns `processing` when confirmation is false; it never infers success from extraction/embedding. Do not change the current index, namespace, or Pasal chunking. Use the same `document_id`/execution ID for retries of callback delivery.
+Index (`kpu-subang-rag`), namespace (`kpu_kab_subang`), dan text splitter tidak diubah. Data Loader hanya diberi metadata `source_url`, `file_hash`, `title`, `document_type` agar tiap chunk bisa dikaitkan kembali ke dokumennya.
 
-For a retry started from Admin Monitoring, pass the originating error row's `error_id` as `retry_error_id` and the newly queued n8n execution ID as `execution_id`. This lets the backend mark the original error `retry_succeeded` only after a Pinecone-confirmed success callback. If the retry execution fails and triggers WF2, WF2 marks the original retry `retry_failed` using the execution ID returned by the retry webhook.
+## Langkah pemasangan
 
-## Error trigger assignment and limitations
+1. **Backend** — pastikan `.env` server (folder `infra`) berisi nilai acak privat untuk:
+   - `INGESTION_CALLBACK_SECRET`
+   - `ADMIN_RETRY_WEBHOOK_SECRET`
+   - `ADMIN_RETRY_WEBHOOK_URL=http://n8n:5678/webhook/kpu-ingest-pdf`
+   - `N8N_API_KEY` (buat di n8n: **Settings → n8n API**), `N8N_API_URL=http://n8n:5678`
 
-1. Import and configure `error-handler.json`, save, and activate it.
-2. Open **WF1 → Settings → Error Workflow**, select **KPU WF2 - Error Handler**, and save WF1.
-3. Keep WF2 unassigned to itself to avoid recursive error handling.
-4. Test with a trigger/schedule execution in staging and verify the DB row and at least one notification.
+   Lalu bangun ulang dan jalankan backend: `docker compose build kpu-backend && docker compose up -d kpu-backend`.
+2. **Credential n8n** (buat di n8n, jangan di Git):
+   - **KPU Ingestion Callback Header** — tipe *Header Auth*, name `X-Ingestion-Key`, value = `INGESTION_CALLBACK_SECRET`.
+   - **KPU - Webhook Ingestion Auth** (sudah ada, dipakai node *Webhook Ingestion*) — ubah name header menjadi `X-Admin-Retry-Secret`, value = `ADMIN_RETRY_WEBHOOK_SECRET`.
+   - **Postgres account** di node *periksa dokumen yang sudah diproses* harus mengarah ke **database aplikasi** (`APP_DB_*`, tempat tabel `ingestion.documents` dibuat oleh Alembic), bukan database internal n8n.
+3. **Impor WF2** — buka WF2 di editor → menu `…` → *Import from File* → pilih file WF2. Pada node **Kirim Error ke Admin** pilih credential *KPU Ingestion Callback Header*. Simpan dan pastikan aktif.
+4. **Impor WF1** dengan cara yang sama. Pilih credential *KPU Ingestion Callback Header* pada node **Kirim Status Sukses ke Admin**. Buka **Settings → Error Workflow** dan pastikan terpilih WF2 (export sudah berisi ID `mESA9ldYO9uzhHzA`; jika ID WF2 Anda berbeda, pilih ulang). Simpan dan aktifkan.
 
-n8n Error Trigger does not fire for a workflow run manually started from the editor. It also may not fire when a node uses `Continue On Fail`, a node error output is connected/handled, or a workflow catches and consumes the error. Route known handled failures explicitly to logging/notification. Do not rely on WF2 for manual executions or failures already swallowed by a node.
+Impor ke workflow yang sudah ada (bukan membuat workflow baru) supaya ID workflow dan URL webhook tetap sama.
 
-## Safe retry configuration
+## Memanggil WF1 lewat webhook
 
-The repository has no WF1 source to infer a restart point or retry semantics. The API therefore requires an operator-configured **dedicated authenticated retry webhook**; it is disabled until `ADMIN_RETRY_WEBHOOK_URL` and `ADMIN_RETRY_WEBHOOK_SECRET` are set privately. Configure the WF1 webhook to validate `X-Admin-Retry-Secret`, persist/check `Idempotency-Key`, execute the approved ingestion path, and return `{"accepted": true, "execution_id": "..."}` only after n8n has queued the execution. Keep upsert IDs deterministic and handle unchanged `file_hash` idempotently. Never expose the webhook publicly without authentication.
+```bash
+curl -X POST https://<N8N_HOST>/webhook/kpu-ingest-pdf \
+  -H "X-Admin-Retry-Secret: <ADMIN_RETRY_WEBHOOK_SECRET>" \
+  -H "Content-Type: application/json" \
+  -d '{"pdf_url": "https://jdih.kpu.go.id/data/data_pkpu/....pdf", "title": "PKPU ..."}'
+```
 
-The API records `retry_requested` before dispatch. If the HTTP request times out, it leaves the request locked because dispatch may already have occurred. Inspect n8n before operator intervention; the UI's accepted state is not a Pinecone or workflow success confirmation.
+- Dengan `pdf_url`: hanya PDF itu yang diproses (tanpa cek duplikat).
+- Tanpa `pdf_url` (dipakai tombol **Retry** admin, body berisi `error_id`): menjalankan pemindaian JDIH yang sama seperti jadwal harian; dokumen yang sudah `success` dilewati. Setiap dokumen yang berhasil dikirim dengan `retry_error_id`, sehingga error asal berubah menjadi `retry_succeeded`. Jika eksekusi retry gagal, WF2 menandai error asal `retry_failed`.
+- Webhook segera membalas `{"accepted": true, "execution_id": "..."}`; itu berarti eksekusi diterima, **bukan** ingestion selesai.
+
+## Batasan yang perlu diketahui
+
+- Error Trigger n8n tidak berjalan untuk eksekusi manual dari editor. Uji dengan jadwal atau webhook.
+- Jika Retry tidak menemukan dokumen baru (semua sudah `success`), tidak ada callback, sehingga status error tetap `retry_requested`.
+- `pasal_count` dihitung dari jumlah nomor `Pasal N` unik pada chunk yang di-upsert.
+- Node HTTP memanggil `http://kpu-backend:8000` (jaringan internal Docker Compose di `infra/compose.yaml`). Jika n8n tidak berada di compose yang sama, ganti URL pada node **Kirim Status Sukses ke Admin** dan **Kirim Error ke Admin** dengan URL backend yang dapat dijangkau n8n.

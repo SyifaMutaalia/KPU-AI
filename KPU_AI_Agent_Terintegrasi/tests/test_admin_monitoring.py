@@ -311,3 +311,52 @@ def test_monitoring_api_and_ingestion_callback_confirm_only_pinecone_success(
         assert doc.pinecone_confirmed is True
         assert doc.chunks_count == 12
         assert db.get(IngestionErrorLog, retry_error_id).status == "retry_succeeded"
+
+
+def test_wf2_error_callback_is_idempotent_and_marks_retry_failed(client, monkeypatch):
+    create_admin(must_change=False)
+    assert login(client).status_code == 200
+    monkeypatch.setenv("INGESTION_CALLBACK_SECRET", "test-ingestion-key")
+    get_settings.cache_clear()
+    with Session(get_engine()) as db:
+        original = IngestionErrorLog(
+            workflow="WF1 - Ingestion PDF KPU per Pasal",
+            execution_id="old-exec",
+            node="Download PDF",
+            message="timeout",
+            status="retry_requested",
+            retry_attempts=1,
+            retry_execution_id="retry-exec-9",
+            details="{}",
+        )
+        db.add(original)
+        db.commit()
+        original_id = original.id
+
+    payload = {
+        "workflow": "WF1 - Ingestion PDF KPU per Pasal",
+        "workflow_id": "msmMgZQ1EbdSWM2z",
+        "execution_id": "retry-exec-9",
+        "node": "Pinecone Vector Store",
+        "message": "Pinecone upsert failed",
+        "stack": "Error: Pinecone upsert failed\n    at x",
+        "mode": "webhook",
+    }
+    unauthorized = client.post("/api/v1/admin/ingestion/error", json=payload)
+    assert unauthorized.status_code == 401
+    headers = {"X-Ingestion-Key": "test-ingestion-key"}
+    first = client.post("/api/v1/admin/ingestion/error", json=payload, headers=headers)
+    assert first.status_code == 200, first.text
+    assert first.json()["created"] is True
+    assert first.json()["status"] == "failed"
+    assert first.json()["retry_marked_failed"] == 1
+    again = client.post("/api/v1/admin/ingestion/error", json=payload, headers=headers)
+    assert again.status_code == 200
+    assert again.json()["created"] is False
+    assert again.json()["error_id"] == first.json()["error_id"]
+
+    errors = client.get("/api/v1/admin/dashboard/errors?status=failed").json()
+    assert errors["total"] == 1
+    assert errors["items"][0]["node"] == "Pinecone Vector Store"
+    with Session(get_engine()) as db:
+        assert db.get(IngestionErrorLog, original_id).status == "retry_failed"
