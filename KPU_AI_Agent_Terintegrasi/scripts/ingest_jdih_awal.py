@@ -93,6 +93,8 @@ def read_detail(client: httpx.Client, url: str) -> list[dict]:
     docs = []
     for raw in PDF_RE.findall(html):
         pdf_url = urljoin(JDIH + "/", raw.replace("&amp;", "&"))
+        if re.search(r"_english\.pdf$", pdf_url, re.I):
+            continue  # versi terjemahan tidak diindeks
         if pdf_url.startswith(JDIH + "/data/data_pkpu/") and pdf_url not in {d["pdf_url"] for d in docs}:
             docs.append({
                 "pdf_url": pdf_url, "title": title, "legal_status": status,
