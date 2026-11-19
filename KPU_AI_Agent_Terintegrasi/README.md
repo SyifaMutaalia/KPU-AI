@@ -27,7 +27,7 @@ n8n/Docker -> WF1 ingestion (tetap dikelola operator) -> Pinecone
 
 **Penting:** e-PPID digunakan sebagai **kanal permohonan informasi**, **bukan sumber RAG**. Dokumen sumber RAG hanya berasal dari domain resmi yang masuk allowlist `.env`. Metadata sumber diperiksa sebelum dipakai sebagai rujukan, dan retrieval memakai ambang kemiripan `RAG_MIN_SCORE` yang harus dituning lewat data pengujian. Ini bukan jaminan bahwa semua dokumen masih berlaku: status regulasi harus diverifikasi saat kurasi.
 
-Admin login, migrasi monitoring, bootstrap akun pertama, integrasi workflow, konfigurasi EC2, dan batasan retry dijelaskan di [`ADMIN_MONITORING.md`](./ADMIN_MONITORING.md). Export WF1 penuh tidak ada dalam repository; helper callback tidak mengganti atau mengubah workflow ingestion yang dikelola operator.
+Admin login, migrasi monitoring, bootstrap akun pertama, integrasi workflow, konfigurasi EC2, dan batasan retry dijelaskan di [`ADMIN_MONITORING.md`](./ADMIN_MONITORING.md). Export WF1 (ingestion) dan WF2 (error handler) ada di [`workflows/`](./workflows/) beserta panduan impornya.
 
 ## 2. Persyaratan
 
