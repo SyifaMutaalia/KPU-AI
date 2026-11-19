@@ -10,9 +10,9 @@ Process runs outside public API. Keep ingestion state and original PDFs backed u
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
-import hashlib
 from collections import Counter
 from pathlib import Path
 
@@ -88,6 +88,7 @@ def main() -> None:
         if not (s.openai_api_key and s.pinecone_api_key and s.pinecone_index_name):
             raise RuntimeError("OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_INDEX_NAME wajib diisi")
         from pinecone import Pinecone
+
         from app.rag.store import get_vectorstore
         store = get_vectorstore()
         index = Pinecone(api_key=s.pinecone_api_key).Index(s.pinecone_index_name)
@@ -121,6 +122,22 @@ def main() -> None:
                 index.delete(ids=old_ids[i:i + 500], namespace=s.pinecone_namespace)
         state["documents"][entry.document_id] = {"fingerprint": current_version, "ids": ids,
             "source_url": entry.source_url, "legal_status": entry.legal_status}
+        from sqlalchemy.orm import Session
+
+        from app.db.session import get_engine
+        from app.services.ingestion_monitor import record_ingestion_success
+        with entry.file_path.open("rb") as stream:
+            file_hash = hashlib.file_digest(stream, "sha256").hexdigest()
+        pasal_count = sum(1 for doc in docs if doc.metadata.get("unit_kind") == "pasal")
+        with Session(get_engine()) as db:
+            record_ingestion_success(
+                db, document_id=entry.document_id, source_url=entry.source_url,
+                document_type=entry.document_type, document_number=entry.document_number,
+                title=entry.title, year=entry.year, file_hash=file_hash,
+                namespace=s.pinecone_namespace, chunks_count=len(docs),
+                pasal_count=pasal_count,
+                execution_id=hashlib.sha256(f"cli:{entry.document_id}:{current_version}".encode()).hexdigest(),
+            )
         save_state(args.state_file, state)
         stats["uploaded"] += 1
     # Revoke previously indexed documents explicitly marked non-current in manifest.

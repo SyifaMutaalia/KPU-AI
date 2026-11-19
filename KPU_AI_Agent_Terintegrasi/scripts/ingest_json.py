@@ -10,6 +10,7 @@ reviewed JSON, then an internal deployment job runs this script after approval.
 import argparse
 import hashlib
 import json
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -77,6 +78,27 @@ def main() -> None:
     store = get_vectorstore()
     for i in range(0, len(chunks), 50):
         store.add_documents(chunks[i:i + 50], ids=ids[i:i + 50])
+    from sqlalchemy.orm import Session
+
+    from app.db.session import get_engine
+    from app.services.ingestion_monitor import record_ingestion_success
+    grouped = defaultdict(list)
+    for document in chunks:
+        grouped[document.metadata["document_id"]].append(document)
+    with Session(get_engine()) as db:
+        for document_id in document_ids:
+            documents = grouped[document_id]
+            metadata = documents[0].metadata
+            file_hash = metadata["content_sha256"]
+            record_ingestion_success(
+                db, document_id=document_id, source_url=metadata["source_url"],
+                document_type=metadata.get("document_type"),
+                document_number=metadata.get("document_number"),
+                title=metadata["title"], year=metadata.get("year"),
+                file_hash=file_hash, namespace=s.pinecone_namespace,
+                chunks_count=len(documents), pasal_count=None,
+                execution_id=hashlib.sha256(f"ingest-json:{document_id}:{file_hash}".encode()).hexdigest(),
+            )
     print("Ingestion complete. Verify search relevance and current legal status before publishing.")
 
 

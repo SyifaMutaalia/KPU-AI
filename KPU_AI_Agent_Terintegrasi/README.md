@@ -18,13 +18,16 @@ FastAPI (app/main.py)
    |      +-- official_channels           -> link resmi, bukan KB
    |-- /api/v1/conversations             -> SQLAlchemy, dibatasi pemilik sesi
    |-- /api/v1/eppid/draft                -> LLM structured output (copy-ready)
+   |-- /api/v1/admin/*                   -> autentikasi admin dan monitoring ingestion
    +-- /health                           -> liveness saja
 
-n8n/Docker (workflow terpisah) -> review dokumen -> scripts/ingest_json.py -> Pinecone
-                                                  (bukan API publik)
+n8n/Docker -> WF1 ingestion (tetap dikelola operator) -> Pinecone
+           -> WF2 error log/notifikasi dan callback monitoring -> PostgreSQL
 ```
 
 **Penting:** e-PPID digunakan sebagai **kanal permohonan informasi**, **bukan sumber RAG**. Dokumen sumber RAG hanya berasal dari domain resmi yang masuk allowlist `.env`. Metadata sumber diperiksa sebelum dipakai sebagai rujukan, dan retrieval memakai ambang kemiripan `RAG_MIN_SCORE` yang harus dituning lewat data pengujian. Ini bukan jaminan bahwa semua dokumen masih berlaku: status regulasi harus diverifikasi saat kurasi.
+
+Admin login, migrasi monitoring, bootstrap akun pertama, integrasi workflow, konfigurasi EC2, dan batasan retry dijelaskan di [`ADMIN_MONITORING.md`](./ADMIN_MONITORING.md). Export WF1 penuh tidak ada dalam repository; helper callback tidak mengganti atau mengubah workflow ingestion yang dikelola operator.
 
 ## 2. Persyaratan
 
@@ -32,7 +35,7 @@ n8n/Docker (workflow terpisah) -> review dokumen -> scripts/ingest_json.py -> Pi
 - OpenAI API key untuk model dan embedding (ditanggung operator, tidak diberikan ke browser)
 - Pinecone API key dan **index yang sudah dibuat** (index dense, dimensi **1536** untuk `text-embedding-3-small`, metrik cosine)
 - PostgreSQL untuk penggunaan multi-instance di production. SQLite dipakai saat development lokal.
-- n8n **opsional** untuk monitoring/menyiapkan JSON; tidak diperlukan agar endpoint API hidup.
+- n8n **opsional** untuk alur ingestion dan Error Workflow; monitoring UI tetap berjalan dengan data PostgreSQL yang tersedia.
 
 ### Menjalankan di Windows PowerShell (tanpa Docker)
 
@@ -47,7 +50,7 @@ Copy-Item .env.example .env
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Salin hasil token acak tersebut ke `SESSION_SECRET` dalam `.env`. Jangan kirim secret ke chat, dan jangan pernah commit `.env` ke Git. Isi `OPENAI_API_KEY`, `PINECONE_API_KEY`, dan `PINECONE_INDEX_NAME` milik project-mu. Tentukan indeks Pinecone dengan dimensi yang sesuai model embedding.
+Salin hasil token acak tersebut ke `SESSION_SECRET` dalam `.env`. Jangan kirim secret ke chat, dan jangan pernah commit `.env` ke Git. Isi `OPENAI_API_KEY`, `PINECONE_API_KEY`, dan `PINECONE_INDEX_NAME` milik project-mu. `RAG_ENABLED` aktif secara default dan retrieval memakai `PINECONE_NAMESPACE` yang sudah dikonfigurasi; set `RAG_ENABLED=false` hanya jika retrieval memang ingin dinonaktifkan. Tentukan indeks Pinecone dengan dimensi yang sesuai model embedding.
 
 ```powershell
 alembic upgrade head

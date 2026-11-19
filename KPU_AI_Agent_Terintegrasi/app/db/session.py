@@ -19,6 +19,16 @@ def get_engine():
         def enable_foreign_keys(dbapi_conn, _record):
             cursor = dbapi_conn.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
+            main_path = next((row[2] for row in cursor.execute("PRAGMA database_list") if row[1] == "main"), "")
+            if main_path:
+                root = Path(main_path)
+                root.parent.mkdir(parents=True, exist_ok=True)
+                admin_path = str(root.with_name(root.stem + ".admin" + root.suffix))
+                ingestion_path = str(root.with_name(root.stem + ".ingestion" + root.suffix))
+            else:
+                admin_path = ingestion_path = ":memory:"
+            cursor.execute("ATTACH DATABASE ? AS admin", (admin_path,))
+            cursor.execute("ATTACH DATABASE ? AS ingestion", (ingestion_path,))
             cursor.close()
     return engine
 

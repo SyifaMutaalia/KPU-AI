@@ -1,0 +1,522 @@
+{
+  "name": "WF1 - Ingestion PDF KPU per Pasal",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kpu-ingest-pdf",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "eb56ad4e-840c-45b4-90e8-f210302c9057",
+      "name": "Webhook Ingestion",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        800,
+        208
+      ],
+      "webhookId": "de593c26-9067-4ed7-be74-2c253c10e0ff",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "1eAKRoqB0spkMA4t",
+          "name": "KPU - Webhook Ingestion Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.pdf_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "4432c77f-a074-45a9-b787-c9c06c5096bb",
+      "name": "Download PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1264,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "5528a5b9-1c45-4ba7-a2fb-b064223b70bd",
+      "name": "Extract PDF",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1472,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "=gpt-6-luna",
+          "mode": "id"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1568,
+        416
+      ],
+      "id": "33044008-e262-4477-8584-208d8e92807a",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "CQtiURLB6FIbkOMI",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "kpu-subang-rag",
+          "mode": "list",
+          "cachedResultName": "kpu-subang-rag"
+        },
+        "options": {
+          "pineconeNamespace": "=kpu_kab_subang"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.4,
+      "position": [
+        2032,
+        208
+      ],
+      "id": "ec9ca6ab-718d-431e-8f4b-51744cfdb0e5",
+      "name": "Pinecone Vector Store",
+      "credentials": {
+        "pineconeApi": {
+          "id": "MR6PbOuxMO8yL2Vk",
+          "name": "Pinecone account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "batchSize": 512
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1984,
+        400
+      ],
+      "id": "40c0b5be-448d-4f89-b5ad-af4dad51a5c9",
+      "name": "Embeddings OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "CQtiURLB6FIbkOMI",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -208,
+        704
+      ],
+      "id": "d4d63502-b5cb-414c-a916-0d5768447f0d",
+      "name": "setiap hari pukul 06.00 WIB"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    $1::text AS pdf_url,\n    EXISTS (\n        SELECT 1\n        FROM ingestion.documents\n        WHERE source_url = $1\n          AND status = 'success'\n    ) AS already_processed;\n",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ $json.pdf_url }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        864,
+        704
+      ],
+      "id": "4e0515f0-5f30-4e82-b8f8-ed2a25e63dab",
+      "name": "periksa dokumen yang sudah diproses",
+      "credentials": {
+        "postgres": {
+          "id": "0Rn5Q1c1QwV0mrCu",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "0bead3d9-6efc-49ed-904b-9433d2ebc03c",
+              "leftValue": "={{ $json.already_processed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1072,
+        704
+      ],
+      "id": "187ccd51-e322-47d6-aa52-14c9fcc14a4c",
+      "name": "dokumen baru atau berubah?"
+    },
+    {
+      "parameters": {
+        "url": "=https://jdih.kpu.go.id",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "=html"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        64,
+        704
+      ],
+      "id": "4b5f9401-69c5-482f-9f34-781eeb99118d",
+      "name": "02 - Ambil Daftar Dokumen JDIH"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.text }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=Kamu adalah agent yang hanya untuk merubah format file.\n\nEkstrak dokumen hukum KPU berikut menjadi JSON terstruktur.\n\nPertahankan seluruh isi Pasal, ayat, huruf, dan struktur hukum asli.\n\nJangan merangkum atau mengubah substansi.\n\nTeks dokumen:\n{{ $json.text }}",
+          "enableStreaming": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1696,
+        208
+      ],
+      "id": "f46f898b-d61a-462d-8fbf-2a35fbe5a3d3",
+      "name": "Normalisasi ke Markdown / JSON",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "textSplittingMode": "custom",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {}
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        416
+      ],
+      "id": "c112e403-7b25-46be-94a1-0ea6ec31e8f2",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json.html || \"\";\n\nconst matches = [...html.matchAll(\n  /href\\s*=\\s*[\"']([^\"']+)[\"']/gi\n)];\n\nconst detailUrls = [...new Set(\n  matches.map(m => m[1]).filter(url =>\n    /^https:\\/\\/jdih\\.kpu\\.go\\.id\\/(peraturan-kpu|keputusan-kpu)\\/detail\\//i.test(url)\n  )\n)];\n\nreturn detailUrls.map(detail_url => ({\n  json: { detail_url, source: \"JDIH KPU\" }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        704
+      ],
+      "id": "b77cb3d0-8a58-4f8c-afe0-bf839e265dd8",
+      "name": "ambil URL dan metadata PDF"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.detail_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "html"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        464,
+        704
+      ],
+      "id": "40480f08-991e-497f-bf08-8bc2fa87a572",
+      "name": "Ambil Detail Dokumen",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nconst seen = new Set();\n\nfor (const item of $input.all()) {\n  const html = item.json.html || \"\";\n\n  const matches = [...html.matchAll(\n    /(?:href|src)\\s*=\\s*[\"']([^\"']+\\.pdf(?:\\?[^\"']*)?)[\"']/gi\n  )];\n\n  for (const match of matches) {\n    let pdf_url = match[1].replace(/&amp;/g, \"&\");\n\n    if (pdf_url.startsWith(\"//\")) {\n      pdf_url = \"https:\" + pdf_url;\n    } else if (pdf_url.startsWith(\"/\")) {\n      pdf_url = \"https://jdih.kpu.go.id\" + pdf_url;\n    } else if (!/^https?:\\/\\//i.test(pdf_url)) {\n      pdf_url = \"https://jdih.kpu.go.id/\" + pdf_url;\n    }\n\n    if (!pdf_url.startsWith(\"https://jdih.kpu.go.id/\")) {\n      continue;\n    }\n\n    if (!pdf_url.includes(\"/data/data_pkpu/\")) {\n      continue;\n    }\n\n    if (seen.has(pdf_url)) continue;\n    seen.add(pdf_url);\n\n    results.push({\n      json: {\n        pdf_url,\n        source: \"JDIH KPU\",\n        document_type: \"PKPU\"\n      }\n    });\n  }\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        704
+      ],
+      "id": "976f3067-fe42-4835-a583-822a5b6ce112",
+      "name": "Periksa Link Download"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        2256,
+        624
+      ],
+      "id": "5ddb4db8-0bbd-440f-8ea5-683203bc114a",
+      "name": "Recursive Character Text Splitter"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Ingestion": {
+      "main": [
+        [
+          {
+            "node": "Download PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download PDF": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF": {
+      "main": [
+        [
+          {
+            "node": "Normalisasi ke Markdown / JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Normalisasi ke Markdown / JSON",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Vector Store": {
+      "ai_tool": [
+        []
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "setiap hari pukul 06.00 WIB": {
+      "main": [
+        [
+          {
+            "node": "02 - Ambil Daftar Dokumen JDIH",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "periksa dokumen yang sudah diproses": {
+      "main": [
+        [
+          {
+            "node": "dokumen baru atau berubah?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "dokumen baru atau berubah?": {
+      "main": [
+        [
+          {
+            "node": "Download PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 - Ambil Daftar Dokumen JDIH": {
+      "main": [
+        [
+          {
+            "node": "ambil URL dan metadata PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalisasi ke Markdown / JSON": {
+      "main": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ambil URL dan metadata PDF": {
+      "main": [
+        [
+          {
+            "node": "Ambil Detail Dokumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ambil Detail Dokumen": {
+      "main": [
+        [
+          {
+            "node": "Periksa Link Download",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Periksa Link Download": {
+      "main": [
+        [
+          {
+            "node": "periksa dokumen yang sudah diproses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Character Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "1b39d209-2041-4efc-90ba-e2f104623bab",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f2ec88e3f9eef7885c5e369830edf7a19447332e479e5aae17a9b5859973b57b"
+  },
+  "nodeGroups": [],
+  "id": "msmMgZQ1EbdSWM2z",
+  "tags": []
+}

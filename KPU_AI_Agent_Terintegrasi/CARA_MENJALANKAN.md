@@ -4,7 +4,8 @@ Isi paket:
 
 - `app/`, `alembic/`, `scripts/` dan `requirements.txt` adalah **backend FastAPI/LangChain**.
 - `kpu-ai-agent-nextjs/` adalah **frontend Next.js**, dengan `/api/*` sebagai proxy server-side ke FastAPI.
-- DB aplikasi **Neon PostgreSQL** menyimpan sesi dan riwayat. **Pinecone** menyimpan indeks vektor dokumen. **n8n** ditambahkan nanti setelah ingestion manual berhasil.
+- DB aplikasi PostgreSQL (Neon atau service pada Compose EC2) menyimpan sesi, riwayat, akun admin, dan status operasional ingestion. **Pinecone** menyimpan indeks vektor dokumen.
+- Admin Monitoring, WF2, instruksi helper callback WF1, bootstrap admin, konfigurasi, dan deployment Compose dijelaskan di [`ADMIN_MONITORING.md`](./ADMIN_MONITORING.md).
 
 ## PENTING: Keamanan kredensial
 

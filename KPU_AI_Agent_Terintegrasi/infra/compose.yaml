@@ -2,7 +2,6 @@ services:
   n8n:
     image: docker.n8n.io/n8nio/n8n:1.119.1
     restart: unless-stopped
-    env_file: .env
     environment:
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=true
       - N8N_BLOCK_FILE_ACCESS_TO_N8N_FILES=true
@@ -26,6 +25,55 @@ services:
       postgres:
         condition: service_healthy
     networks: [internal]
+  kpu-backend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${APP_DB_USER}:${APP_DB_PASSWORD}@postgres:5432/${APP_DB_NAME}
+      APP_ENV: production
+      COOKIE_SECURE: "true"
+      CORS_ORIGINS: '["https://${APP_HOST}"]'
+      RAG_ENABLED: ${RAG_ENABLED:-true}
+      SESSION_SECRET: ${SESSION_SECRET}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-14}
+      APP_NAME: ${APP_NAME:-KPU Subang AI Agent Backend}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      PINECONE_API_KEY: ${PINECONE_API_KEY}
+      PINECONE_INDEX_NAME: ${PINECONE_INDEX_NAME}
+      PINECONE_NAMESPACE: ${PINECONE_NAMESPACE:-kpu-subang}
+      ADMIN_LOGIN_RATE_LIMIT: ${ADMIN_LOGIN_RATE_LIMIT:-8}
+      ADMIN_RESET_RATE_LIMIT: ${ADMIN_RESET_RATE_LIMIT:-5}
+      ADMIN_SESSION_TTL_HOURS: ${ADMIN_SESSION_TTL_HOURS:-12}
+      N8N_API_URL: ${N8N_API_URL:-http://n8n:5678}
+      N8N_API_KEY: ${N8N_API_KEY:-}
+      ADMIN_RETRY_WEBHOOK_URL: ${ADMIN_RETRY_WEBHOOK_URL:-}
+      ADMIN_RETRY_WEBHOOK_SECRET: ${ADMIN_RETRY_WEBHOOK_SECRET}
+      INGESTION_CALLBACK_SECRET: ${INGESTION_CALLBACK_SECRET}
+      ADMIN_RESET_URL: https://${APP_HOST}/admin/reset-password
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+  kpu-frontend:
+    build:
+      context: ../kpu-ai-agent-nextjs
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      FASTAPI_BASE_URL: http://kpu-backend:8000
+      APP_ORIGIN: https://${APP_HOST}
+    depends_on: [kpu-backend]
+    networks: [internal]
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -33,8 +81,12 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      APP_DB_NAME: ${APP_DB_NAME}
+      APP_DB_USER: ${APP_DB_USER}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
@@ -44,6 +96,7 @@ services:
   caddy:
     environment:
       - N8N_HOST=${N8N_HOST}
+      - APP_HOST=${APP_HOST}
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
@@ -53,7 +106,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    depends_on: [n8n]
+    depends_on: [n8n, kpu-frontend]
     networks: [internal]
 networks:
   internal:

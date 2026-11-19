@@ -1,0 +1,117 @@
+{
+  "name": "WF2- Error Handler dan Monitoring KPU (execution log)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e86d62fb-dd35-49f7-b224-0f8647bf556d",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ingestion.error_logs (\n    workflow_name,\n    workflow_id,\n    execution_id,\n    node_name,\n    error_message,\n    error_stack,\n    source_url,\n    status,\n    occurred_at\n)\nVALUES (\n    $1,\n    $2,\n    $3,\n    $4,\n    $5,\n    $6,\n    $7,\n    'open',\n    NOW()\n)\nON CONFLICT (\n    workflow_id,\n    execution_id,\n    node_name\n)\nWHERE workflow_id IS NOT NULL\n  AND execution_id IS NOT NULL\n  AND node_name IS NOT NULL\nDO NOTHING\nRETURNING\n    id,\n    workflow_name,\n    node_name,\n    error_message,\n    status,\n    occurred_at;\n",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [\n  $json.workflow_name,\n  $json.workflow_id,\n  $json.execution_id,\n  $json.node_name,\n  $json.error_message,\n  $json.error_stack,\n  $json.source_url\n] }}\n"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        448,
+        0
+      ],
+      "id": "87cf99cf-fdc8-49b5-acd9-2d34cba579d7",
+      "name": "Simpan Error Log",
+      "credentials": {
+        "postgres": {
+          "id": "0Rn5Q1c1QwV0mrCu",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of $input.all()) {\n  const data = item.json ?? {};\n\n  const execution = data.execution ?? {};\n  const workflow = data.workflow ?? {};\n  const trigger = data.trigger ?? {};\n\n  const error =\n    execution.error ??\n    trigger.error ??\n    data.error ??\n    {};\n\n  const node =\n    execution.lastNodeExecuted ??\n    error.node?.name ??\n    null;\n\n  const message =\n    typeof error === \"string\"\n      ? error\n      : error.message ??\n        data.message ??\n        \"Kesalahan workflow tidak diketahui\";\n\n  results.push({\n    json: {\n      workflow_name: workflow.name ?? \"Unknown Workflow\",\n      workflow_id: workflow.id\n        ? String(workflow.id)\n        : null,\n      execution_id: execution.id\n        ? String(execution.id)\n        : null,\n      node_name: node,\n      error_message: String(message),\n      error_stack: error.stack\n        ? String(error.stack)\n        : null,\n      source_url: null,\n      status: \"open\"\n    }\n  });\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "4480b72a-330c-4f40-b180-93fb8179f005",
+      "name": "02 - Normalisasi Error"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT indexname, indexdef\nFROM pg_indexes\nWHERE schemaname = 'ingestion'\n  AND tablename = 'error_logs';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        128,
+        224
+      ],
+      "id": "fb5917b3-7946-415c-b77c-37a554894b79",
+      "name": "tabel error",
+      "credentials": {
+        "postgres": {
+          "id": "0Rn5Q1c1QwV0mrCu",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "02 - Normalisasi Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 - Normalisasi Error": {
+      "main": [
+        [
+          {
+            "node": "Simpan Error Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simpan Error Log": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "9e008a78-fd7e-4449-8d13-3a916e333be3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f2ec88e3f9eef7885c5e369830edf7a19447332e479e5aae17a9b5859973b57b"
+  },
+  "nodeGroups": [],
+  "id": "mESA9ldYO9uzhHzA",
+  "tags": []
+}

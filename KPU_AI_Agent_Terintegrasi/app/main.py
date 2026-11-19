@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.api.routes import chat, conversations, eppid, session
+from app.api.routes import admin, chat, conversations, eppid, session
 from app.core.config import get_settings
 from app.db.models import Base
 from app.db.session import get_engine
@@ -14,8 +14,9 @@ from app.db.session import get_engine
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # For local onboarding only. Run Alembic migrations in production.
-    if get_settings().app_env in ("development", "test"):
+    # SQLite is the only database initialized automatically for local onboarding.
+    # PostgreSQL schemas and existing tables must be managed by Alembic migrations.
+    if get_settings().database_url.startswith("sqlite"):
         Base.metadata.create_all(bind=get_engine())
     yield
 
@@ -46,7 +47,7 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok", "environment": s.app_env}
 
-    for router in (session.router, chat.router, conversations.router, eppid.router):
+    for router in (session.router, chat.router, conversations.router, eppid.router, admin.router):
         app.include_router(router, prefix="/api/v1")
     return app
 

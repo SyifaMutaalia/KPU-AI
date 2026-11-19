@@ -46,6 +46,22 @@ def test_chat_history_isolation_and_delete(client, monkeypatch):
     assert client.get("/api/v1/conversations").json() == []
 
 
+def test_google_identity_chat_preserves_response_contract_without_sources(client):
+    headers = auth(client)
+    response = client.post(
+        "/api/v1/chat",
+        json={"message": "Apa bedanya kamu dengan Google?"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert {"answer", "sources", "conversation_id"} <= body.keys()
+    assert body["sources"] == []
+    assert body["conversation_id"]
+    assert "Google" in body["answer"]
+
+
 def test_pii_rejected(client, monkeypatch):
     monkeypatch.setattr("app.services.ai_service.answer_question", fake_answer)
     headers = auth(client)

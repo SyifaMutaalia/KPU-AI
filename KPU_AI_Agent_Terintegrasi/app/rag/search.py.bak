@@ -1,0 +1,112 @@
+"""Pencarian RAG produksi atau index review lokal untuk AI Agent yang sama.
+
+Tidak ada bypass AI Agent. Namespace review hanya boleh digunakan dalam development;
+vektor dengan legal_status=belum_diverifikasi tidak pernah dipromosikan otomatis.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import re
+
+from langchain_openai import OpenAIEmbeddings
+from langchain_pinecone import PineconeVectorStore
+
+from app.core.config import get_settings
+from app.core.safety import is_approved_source
+from app.rag.store import get_vectorstore
+from app.schemas.chat import Source
+
+logger = logging.getLogger(__name__)
+REVIEW_NAMESPACE = "kpu_review_2024_2026"
+
+
+def current_rag_mode(settings=None) -> str:
+    """Mode review hanya tersedia ketika APP_ENV=development dan flag eksplisit."""
+    s = settings or get_settings()
+    requested = os.getenv("KPU_RAG_SOURCE", "production").strip().lower()
+    if requested == "review":
+        if s.app_env != "development":
+            raise RuntimeError("KPU_RAG_SOURCE=review hanya diperbolehkan dalam development")
+        return "review"
+    return "production"
+
+
+def _exact_subang_decision_id(query: str) -> str | None:
+    """Only infer an ID when the user explicitly names a Subang KPU decision.
+
+    A mention of PKPU Number 4, or merely "number 4", is insufficient.
+    """
+    lower = query.lower()
+    if not re.search(r"\bkeputusan\b", lower):
+        return None
+    if not re.search(r"\b(kpu|komisi pemilihan umum)\b", lower):
+        return None
+    if not re.search(r"\bsubang\b", lower):
+        return None
+    match = re.search(r"\bnomor\s*(\d{1,5})\s*tahun\s*(20\d{2})\b", lower)
+    if not match:
+        return None
+    number, year = match.groups()
+    return f"{year}kpt{int(number)}"
+
+
+def search_official_documents(query: str) -> tuple[list[dict], list[Source]]:
+    s = get_settings()
+    mode = current_rag_mode(s)
+    if mode == "review":
+        if not (s.openai_api_key and s.pinecone_api_key and s.pinecone_index_name):
+            raise RuntimeError("OpenAI/Pinecone belum dikonfigurasi di backend")
+        store = PineconeVectorStore(
+            index_name=s.pinecone_index_name,
+            embedding=OpenAIEmbeddings(api_key=s.openai_api_key, model=s.openai_embedding_model),
+            pinecone_api_key=s.pinecone_api_key,
+            namespace=REVIEW_NAMESPACE,
+        )
+        filter_expression = {"chunk_review_status": {"$eq": "manually_reviewed_for_staging"}}
+        exact_id = _exact_subang_decision_id(query)
+        if exact_id:
+            filter_expression = {
+                "$and": [filter_expression, {"document_id": {"$eq": exact_id}}]
+            }
+            logger.info("RAG exact document filter=%s", exact_id)
+    else:
+        if not getattr(s, "rag_enabled", True):
+            return [], []
+        store = get_vectorstore()
+        filter_expression = {"legal_status": {"$eq": "berlaku"}}
+
+    k = max(s.rag_top_k, 12) if mode == "review" and _exact_subang_decision_id(query) else s.rag_top_k
+    results = store.similarity_search_with_score(query, k=k, filter=filter_expression)
+    excerpts: list[dict] = []
+    sources: list[Source] = []
+    seen_urls: set[str] = set()
+    for doc, score in results:
+        if score is None or float(score) < s.rag_min_score:
+            continue
+        md = doc.metadata
+        url = str(md.get("source_url") or "").strip()
+        official_url = url if is_approved_source(url, s.rag_allowed_hosts) else ""
+        if mode == "production" and not official_url:
+            continue
+        content = doc.page_content.strip()
+        if not content:
+            continue
+        title = str(md.get("title") or md.get("document_id") or "Dokumen KPU")[:160]
+        excerpt = {
+            "title": title,
+            "document_id": str(md.get("document_id") or ""),
+            "legal_reference": str(md.get("legal_reference") or ""),
+            "page_start": md.get("page_start"),
+            "page_end": md.get("page_end"),
+            "legal_status": str(md.get("legal_status") or "belum_diverifikasi"),
+            "source_url": official_url,
+            "text": content[:3500],
+            "similarity_score": round(float(score), 4),
+        }
+        excerpts.append(excerpt)
+        if official_url and official_url not in seen_urls:
+            seen_urls.add(official_url)
+            sources.append(Source(title=title, url=official_url))
+    logger.info("RAG mode=%s results=%s query_chars=%s", mode, len(excerpts), len(query))
+    return excerpts, sources

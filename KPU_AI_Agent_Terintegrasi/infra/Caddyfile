@@ -2,3 +2,8 @@
     reverse_proxy n8n:5678
     encode gzip
 }
+
+{$APP_HOST} {
+    reverse_proxy kpu-frontend:3000
+    encode gzip
+}

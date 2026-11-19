@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 // BFF: browser hanya berkomunikasi dengan Next.js. Kunci AI tetap ada di FastAPI.
 const UPSTREAM_TIMEOUT_MS = 65_000;
 const SESSION_COOKIE_NAME = 'kpu_session';
+const ADMIN_COOKIE_NAME = 'kpu_admin_session';
+const ADMIN_CSRF_COOKIE_NAME = 'kpu_admin_csrf';
 
 export function checkRequestOrigin(request: NextRequest): NextResponse | null {
   const origin = request.headers.get('origin');
@@ -57,8 +59,62 @@ export async function callFastAPI(
     });
     // Set-Cookie dari FastAPI harus sampai ke browser pada domain Next.js.
     // Cookie HttpOnly tetap tidak dapat dibaca JavaScript frontend.
-    const setCookie = upstream.headers.get('set-cookie');
-    if (setCookie) response.headers.set('Set-Cookie', setCookie);
+    const cookieHeaders = (upstream.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.()
+      ?? [upstream.headers.get('set-cookie')].filter((cookie): cookie is string => Boolean(cookie));
+    for (const cookie of cookieHeaders) response.headers.append('Set-Cookie', cookie);
+    return response;
+  } catch {
+    return NextResponse.json({ error: 'FastAPI tidak bisa dihubungi. Periksa URL dan server backend.' }, { status: 502 });
+  }
+}
+
+export async function callAdminFastAPI(
+  request: NextRequest,
+  path: string,
+  options: { method?: 'GET' | 'POST'; body?: unknown; csrf?: boolean } = {},
+): Promise<NextResponse> {
+  const originError = checkRequestOrigin(request);
+  if (originError) return originError;
+  const base = process.env.FASTAPI_BASE_URL;
+  if (!base) return NextResponse.json({ error: 'FASTAPI_BASE_URL belum dikonfigurasi.' }, { status: 503 });
+  try {
+    const url = new URL(path, base.endsWith('/') ? base : `${base}/`);
+    const headers = new Headers({ Accept: 'application/json' });
+    if (options.body !== undefined) headers.set('Content-Type', 'application/json');
+    const cookies = [
+      request.cookies.get(ADMIN_COOKIE_NAME),
+      request.cookies.get(ADMIN_CSRF_COOKIE_NAME),
+    ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+    if (cookies.length) headers.set('Cookie', cookies.map(({ name, value }) => `${name}=${value}`).join('; '));
+    const origin = request.headers.get('origin');
+    if (origin) headers.set('Origin', origin);
+    if (options.csrf) {
+      const token = request.headers.get('x-csrf-token');
+      if (!token) return NextResponse.json({ error: 'Token CSRF belum tersedia. Muat ulang halaman.' }, { status: 403 });
+      headers.set('X-CSRF-Token', token);
+    }
+    const upstream = await fetch(url, {
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      cache: 'no-store',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (upstream.status >= 300 && upstream.status < 400) {
+      return NextResponse.json({ error: 'Pengalihan dari backend tidak didukung.' }, { status: 502 });
+    }
+    const body = upstream.status === 204 ? null : await upstream.text();
+    const response = new NextResponse(body, {
+      status: upstream.status,
+      headers: {
+        'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
+    });
+    const cookieHeaders = (upstream.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.()
+      ?? [upstream.headers.get('set-cookie')].filter((cookie): cookie is string => Boolean(cookie));
+    for (const cookie of cookieHeaders) response.headers.append('Set-Cookie', cookie);
     return response;
   } catch {
     return NextResponse.json({ error: 'FastAPI tidak bisa dihubungi. Periksa URL dan server backend.' }, { status: 502 });
