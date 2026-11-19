@@ -7,7 +7,18 @@ class DraftRequest(BaseModel):
 
 
 class DraftOut(BaseModel):
+    """Isian formulir permohonan e-PPID KPU Kabupaten Subang, urut sesuai formulirnya.
+
+    Kolom identitas (nama, NIK, alamat, kontak) sengaja tidak ada: pemohon
+    mengisinya sendiri di situs e-PPID resmi.
+    """
+
     informasi_yang_dimohon: str
     tujuan_penggunaan_informasi: str
     official_url: str
     note: str
+    jenis_pemohon: str = "Perorangan"
+    cara_memperoleh_informasi: str = "Mendapat Salinan Informasi Softcopy"
+    cara_memperoleh_salinan: str = "Email"
+    format_salinan: str = "Terkirim"
+    form_url: str = ""
