@@ -7,7 +7,8 @@ Jangan menganggap ringkasan LLM setara salinan dokumen regulasi.
 from __future__ import annotations
 
 import re
-from urllib.parse import urlsplit
+import re
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from openai import OpenAI
 
@@ -43,6 +44,22 @@ def is_official_web_url(url: str) -> bool:
         return False
 
 
+def _clean_url(url: str) -> str:
+    """Buang parameter pelacak (utm_*) yang ditambahkan mesin pencari."""
+    parts = urlsplit(url)
+    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if not k.lower().startswith("utm_")]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ""))
+
+
+def _clean_title(title: str, url: str) -> str:
+    text = re.sub(r"\s+", " ", title or "").strip()
+    if not text or text.lower() in {"jdih komisi pemilihan umum", "lampiran"}:
+        path = urlsplit(url).path.rstrip("/").split("/")[-1] or urlsplit(url).hostname or url
+        prefix = "Halaman JDIH KPU" if "jdih.kpu.go.id" in url else "Situs resmi"
+        text = f"{prefix}: {path}" if text.lower() != "jdih komisi pemilihan umum" else "Halaman detail JDIH KPU"
+    return text[:160]
+
+
 def extract_web_citations(response) -> list[Source]:
     found: list[Source] = []
     seen: set[str] = set()
@@ -53,12 +70,12 @@ def extract_web_citations(response) -> list[Source]:
             for ann in getattr(part, "annotations", []) or []:
                 if getattr(ann, "type", "") != "url_citation":
                     continue
-                url = str(getattr(ann, "url", "") or "")
+                url = _clean_url(str(getattr(ann, "url", "") or ""))
                 if not is_official_web_url(url) or url in seen:
                     continue
                 seen.add(url)
                 found.append(
-                    Source(title=str(getattr(ann, "title", "") or url)[:160], url=url)
+                    Source(title=_clean_title(str(getattr(ann, "title", "") or ""), url), url=url)
                 )
     return found[:7]
 

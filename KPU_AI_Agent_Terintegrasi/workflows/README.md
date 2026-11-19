@@ -44,7 +44,7 @@ Vektor lama yang dimasukkan sebelum perubahan ini tidak punya metadata tersebut,
 2. **Credential n8n** (buat di n8n, jangan di Git):
    - **KPU Ingestion Callback Header** — tipe *Header Auth*, name `X-Ingestion-Key`, value = `INGESTION_CALLBACK_SECRET`.
    - **KPU - Webhook Ingestion Auth** (sudah ada, dipakai node *Webhook Ingestion*) — ubah name header menjadi `X-Admin-Retry-Secret`, value = `ADMIN_RETRY_WEBHOOK_SECRET`.
-   - **Postgres account** di node *periksa dokumen yang sudah diproses* harus mengarah ke **database aplikasi** (`APP_DB_*`, tempat tabel `ingestion.documents` dibuat oleh Alembic), bukan database internal n8n.
+   - **Postgres account** di node *periksa dokumen yang sudah diproses* harus mengarah ke **database aplikasi di Neon** (host, database, user, dan password dari `DATABASE_URL` backend; aktifkan SSL), bukan database internal n8n. Tanpa ini WF1 tidak tahu dokumen mana yang sudah diproses.
 3. **Impor WF2** — buka WF2 di editor → menu `…` → *Import from File* → pilih file WF2. Pada node **Kirim Error ke Admin** pilih credential *KPU Ingestion Callback Header*. Simpan dan pastikan aktif.
 4. **Impor WF1** dengan cara yang sama. Pilih credential *KPU Ingestion Callback Header* pada node **Kirim Status Sukses ke Admin**. Buka **Settings → Error Workflow** dan pastikan terpilih WF2 (export sudah berisi ID `mESA9ldYO9uzhHzA`; jika ID WF2 Anda berbeda, pilih ulang). Simpan dan aktifkan.
 
@@ -79,4 +79,4 @@ curl -X POST https://<N8N_HOST>/webhook/kpu-ingest-pdf \
 - Error Trigger n8n tidak berjalan untuk eksekusi manual dari editor. Uji dengan jadwal atau webhook.
 - Jika Retry tidak menemukan dokumen baru (semua sudah `success`), tidak ada callback, sehingga status error tetap `retry_requested`.
 - `pasal_count` dihitung dari jumlah nomor `Pasal N` unik pada chunk yang di-upsert.
-- Node HTTP memanggil `http://kpu-backend:8000` (jaringan internal Docker Compose di `infra/compose.yaml`). Jika n8n tidak berada di compose yang sama, ganti URL pada node **Kirim Status Sukses ke Admin** dan **Kirim Error ke Admin** dengan URL backend yang dapat dijangkau n8n.
+- Node HTTP memanggil backend publik `https://ai-agent-kpu-api.vercel.app`. Jika backend dipindah, ganti URL pada node **Kirim Status Processing ke Admin**, **Kirim Status Sukses ke Admin**, dan **Kirim Error ke Admin**.
