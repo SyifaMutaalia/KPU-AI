@@ -17,7 +17,7 @@ def generate_draft(request: DraftRequest) -> DraftOut:
     s = get_settings()
     if not s.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY belum dikonfigurasi.")
-    model = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, temperature=0, timeout=35, max_retries=1)
+    model = ChatOpenAI(model=s.openai_model, api_key=s.openai_api_key, use_responses_api=True, reasoning={"effort": "low"}, timeout=35, max_retries=1)
     response: DraftFields = model.with_structured_output(DraftFields).invoke([
         SystemMessage(content=DRAFT_SYSTEM_PROMPT),
         HumanMessage(content=f"Informasi yang dibutuhkan: {request.information_needed}\nTujuan yang diberikan: {request.purpose or '(belum disebutkan)'}"),
