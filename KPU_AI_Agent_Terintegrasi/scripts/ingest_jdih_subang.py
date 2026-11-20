@@ -2,26 +2,28 @@
 
 Sumber: JDIH KPU > Koleksi Kab/Kota > Jawa Barat > Kabupaten Subang
 (https://jdih.kpu.go.id/koleksi/kabkot/32/3213). Sebagian besar PDF keputusan
-daerah adalah hasil scan tanpa teks, sehingga halaman tanpa teks dibaca dengan
-OCR berbasis LLM (model vision OpenAI) yang diminta menyalin teks apa adanya.
+daerah adalah hasil scan tanpa teks, sehingga memakai pipeline LLM yang sama dengan
+scripts/llm_extract_pdf.py dan scripts/llm_chunk_markdown.py:
+  1. tiap halaman PDF -> Markdown oleh LLM (transkripsi, bukan ringkasan);
+  2. LLM hanya menentukan batas chunk per diktum/Pasal; teks chunk disalin persis
+     dari Markdown oleh Python (tanpa parafrase), dengan halaman dan label hukumnya.
 
 Alurnya sama dengan scripts/ingest_jdih_awal.py: metadata dari halaman detail
-(judul, nomor, tahun, status) -> unduh PDF -> teks (atau OCR) -> potong 1.000
-karakter -> embedding OpenAI -> upsert Pinecone -> lapor ke dashboard admin.
+(judul, nomor, tahun, status) -> unduh PDF -> Markdown -> chunk per diktum/Pasal
+-> embedding OpenAI -> upsert Pinecone -> lapor ke dashboard admin.
 Secara default hanya dokumen berstatus "Berlaku" tahun 2024-2026 yang diproses. Dokumen yang sudah sukses (file_hash
 sama) dilewati, sehingga script aman dijalankan ulang.
 
 Contoh:
   python -m scripts.ingest_jdih_subang --backend https://ai-agent-kpu-api.vercel.app
 
-Butuh: pymupdf, serta variabel OPENAI_API_KEY (opsional OPENAI_OCR_MODEL), PINECONE_API_KEY, PINECONE_INDEX_NAME, PINECONE_NAMESPACE,
+Butuh variabel OPENAI_API_KEY (opsional OPENAI_OCR_MODEL), PINECONE_API_KEY, PINECONE_INDEX_NAME, PINECONE_NAMESPACE,
 INGESTION_CALLBACK_SECRET.
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import io
 import json
@@ -40,6 +42,9 @@ from openai import OpenAI
 from pinecone import Pinecone
 from pypdf import PdfReader
 
+from scripts.llm_chunk_markdown import CHUNK_INSTRUCTIONS, BoundaryPlan, build_preview
+from scripts.llm_extract_pdf import extract_one, one_page_bytes
+
 JDIH = "https://jdih.kpu.go.id"
 COLLECTION = f"{JDIH}/koleksi/to_kabkot/32/3213/kepkpukabkot"
 LISTING = f"{JDIH}/kepkpukabkot"
@@ -48,15 +53,7 @@ DETAIL_RE = re.compile(r'href="(https://jdih\.kpu\.go\.id/kepkpukabkot/detail/[^
 PDF_RE = re.compile(r'(?:href|src)\s*=\s*["\']([^"\']+\.pdf)["\']', re.I)
 TITLE_RE = re.compile(r"(Keputusan Komisi Pemilihan Umum Kabupaten Subang Nomor .+?)\s+Tipe\s*:", re.I)
 STATUS_RE = re.compile(r"Keterangan Status\s*:\s*(Tidak Berlaku|Dicabut|Berlaku|Diubah)", re.I)
-OCR_PROMPT = (
-    "Ini satu halaman hasil scan dokumen resmi KPU Kabupaten Subang. Salin SELURUH teks pada halaman "
-    "persis seperti tertulis, dalam bahasa aslinya, urut dari atas ke bawah. Pertahankan nomor, tanggal, "
-    "nama, angka, dan penomoran pasal/diktum. Tabel ditulis baris per baris dengan pemisah ' | '. "
-    "Jangan meringkas, menerjemahkan, menambah, atau menebak; tulis [tidak terbaca] untuk bagian yang tidak "
-    "terbaca. Abaikan tanda tangan, stempel, dan gambar. Keluarkan hanya teks halaman."
-)
-WORKFLOW = "Ingest JDIH KPU Subang"
-DOCUMENT_TYPE = "Keputusan KPU Kabupaten Subang"
+MAX_CHUNK_LINES = 600  # batas llm_chunk_markdown; dokumen lebih panjang dipecah per kelompok halaman
 
 
 def plain(html: str) -> str:
@@ -131,38 +128,54 @@ def list_documents(client: httpx.Client, limit: int) -> list[dict]:
     return docs
 
 
-def ocr_page(openai: OpenAI, model: str, png: bytes) -> str:
-    image = "data:image/png;base64," + base64.b64encode(png).decode()
-    for attempt in range(3):
-        try:
-            response = openai.responses.create(
-                model=model, store=False, reasoning={"effort": "low"}, max_output_tokens=6000,
-                input=[{"role": "user", "content": [
-                    {"type": "input_text", "text": OCR_PROMPT},
-                    {"type": "input_image", "image_url": image, "detail": "high"},
-                ]}],
-            )
-            return (response.output_text or "").strip()
-        except Exception:
-            if attempt == 2:
-                raise
-            time.sleep(5 * (attempt + 1))
-    return ""
-
-
-def pdf_text(content: bytes, openai: OpenAI, model: str) -> tuple[str, int]:
-    """Teks PDF; halaman tanpa teks dibaca dengan OCR LLM. Mengembalikan (teks, jumlah halaman OCR)."""
-    import fitz  # pymupdf
-
+def pdf_markdown(content: bytes, openai: OpenAI, model: str) -> tuple[str, int]:
+    """Markdown per halaman dengan penanda <!-- PAGE: N -->; halaman scan ditranskripsi LLM."""
     reader = PdfReader(io.BytesIO(content))
-    document = fitz.open(stream=content, filetype="pdf")
-    pages = [(page.extract_text() or "").strip() for page in reader.pages]
-    scanned = [i for i, text in enumerate(pages) if len(text) < 80]
-    images = {i: document[i].get_pixmap(dpi=150).tobytes("png") for i in scanned}
+
+    def page(index: int) -> tuple[str, bool]:
+        text = (reader.pages[index].extract_text() or "").strip()
+        if len(text) >= 80:
+            return text, False
+        for attempt in range(3):
+            try:
+                return extract_one(openai, model, one_page_bytes(reader, index), f"page-{index + 1:03d}.pdf"), True
+            except Exception:
+                if attempt == 2:
+                    raise
+                time.sleep(5 * (attempt + 1))
+        raise RuntimeError("unreachable")
+
     with ThreadPoolExecutor(max_workers=4) as pool:
-        for i, text in zip(scanned, pool.map(lambda i: ocr_page(openai, model, images[i]), scanned)):
-            pages[i] = text
-    return "\n".join(pages).strip(), len(scanned)
+        results = list(pool.map(page, range(len(reader.pages))))
+    markdown = "\n\n".join(f"<!-- PAGE: {i} -->\n\n{text}\n" for i, (text, _) in enumerate(results, 1))
+    return markdown, sum(1 for _, llm in results if llm)
+
+
+def legal_chunks(markdown: str, openai: OpenAI, model: str) -> list[dict]:
+    """Batas chunk per diktum/Pasal dari LLM; isi chunk tetap salinan persis Markdown."""
+    pages = re.split(r"(?=<!-- PAGE: \d+ -->)", markdown)
+    groups, current = [], ""
+    for part in pages:  # kelompokkan halaman agar tiap permintaan <= MAX_CHUNK_LINES baris
+        if current and len((current + part).splitlines()) > MAX_CHUNK_LINES:
+            groups.append(current)
+            current = ""
+        current += part
+    if current:
+        groups.append(current)
+    chunks = []
+    for group in groups:
+        lines = group.splitlines(keepends=True)
+        numbered = "\n".join(f"{i:04d} | {line.rstrip(chr(10)).rstrip(chr(13))}" for i, line in enumerate(lines, 1))
+        response = openai.responses.parse(
+            model=model, store=False, instructions=CHUNK_INSTRUCTIONS,
+            input=f"Jumlah baris: {len(lines)}\n\n{numbered}", text_format=BoundaryPlan,
+            max_output_tokens=7000,
+        )
+        if response.output_parsed is None:
+            raise RuntimeError("LLM tidak mengembalikan batas chunk")
+        chunks += build_preview(group, "jdih", response.output_parsed, model)["chunks"]
+    # Potongan yang hanya berisi penanda halaman/kosong tidak berguna untuk pencarian.
+    return [c for c in chunks if re.sub(r"<!-- PAGE: \d+ -->", "", c["text_md"]).strip()]
 
 
 def callback(client: httpx.Client, backend: str, secret: str, payload: dict) -> None:
@@ -198,7 +211,7 @@ def main() -> int:
     index = Pinecone(api_key=os.environ["PINECONE_API_KEY"], **pinecone_options).Index(
         os.environ["PINECONE_INDEX_NAME"]
     )
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=0)
     skip = set()
     if args.skip_hashes and Path(args.skip_hashes).exists():
         skip = {line.strip() for line in Path(args.skip_hashes).read_text().splitlines() if line.strip()}
@@ -238,17 +251,22 @@ def main() -> int:
                     skipped += 1
                     continue
                 callback(backend_client, args.backend, secret, {**base, "status": "processing", "file_hash": file_hash})
-                text, ocr_pages = pdf_text(content, openai, ocr_model)
-                if len(text) < 200:
-                    raise RuntimeError("teks tidak terbaca bahkan setelah OCR")
-                text = re.sub(r"\[tidak terbaca\]", "", text)
-                chunks = [c for c in splitter.split_text(text) if c.strip()]
+                text, ocr_pages = pdf_markdown(content, openai, ocr_model)
+                if len(re.sub(r"<!-- PAGE: \d+ -->", "", text).strip()) < 200:
+                    raise RuntimeError("teks tidak terbaca bahkan setelah ekstraksi LLM")
+                try:
+                    units = legal_chunks(text, openai, ocr_model)
+                except Exception as exc:  # cadangan: potong per ukuran agar dokumen tetap terindeks
+                    print(f"   chunk per diktum gagal ({type(exc).__name__}); pakai potongan ukuran", flush=True)
+                    units = [{"text_md": c, "legal_reference": "", "pages": [], "unit_type": "other"}
+                             for c in splitter.split_text(text) if c.strip()]
+                chunks = [u["text_md"].strip() for u in units]
                 metadata = {
                     "source_url": doc["pdf_url"], "document_id": document_id,
                     "title": doc["title"] or "", "document_type": DOCUMENT_TYPE,
                     "document_number": doc["document_number"] or "", "year": doc["year"] or "",
                     "legal_status": doc["legal_status"], "file_hash": file_hash,
-                    "text_source": "ocr_llm" if ocr_pages else "pdf_text",
+                    "text_source": "llm_markdown" if ocr_pages else "pdf_text",
                 }
                 for start in range(0, len(chunks), 100):
                     batch = chunks[start:start + 100]
@@ -257,17 +275,25 @@ def main() -> int:
                     ).data
                     index.upsert(namespace=namespace, vectors=[
                         {"id": f"{document_id}-{start + i}", "values": v.embedding,
-                         "metadata": {**metadata, "text": chunk, "chunk_index": start + i}}
+                         "metadata": {**metadata, "text": chunk, "chunk_index": start + i,
+                                      "legal_reference": units[start + i]["legal_reference"] or "",
+                                      "unit_type": units[start + i]["unit_type"] or "",
+                                      **({"page_start": min(units[start + i]["pages"]),
+                                          "page_end": max(units[start + i]["pages"])}
+                                         if units[start + i]["pages"] else {})}}
                         for i, (chunk, v) in enumerate(zip(batch, vectors))
                     ])
-                pasal = {m.group(1) for m in re.finditer(r"\bPasal\s+(\d+[A-Z]?)\b", text)}
+                # Hapus sisa vektor dari ingest sebelumnya yang punya lebih banyak potongan.
+                index.delete(namespace=namespace, ids=[f"{document_id}-{i}" for i in range(len(chunks), len(chunks) + 300)])
+                pasal = {u["legal_reference"] for u in units if u["legal_reference"]}
                 callback(backend_client, args.backend, secret, {
                     **base, "status": "success", "file_hash": file_hash,
                     "chunks_count": len(chunks), "pasal_count": len(pasal) or None,
                     "pinecone_confirmed": True,
                 })
                 ok += 1
-                print(f"[{n}/{len(documents)}] OK {len(chunks)} chunk (OCR {ocr_pages} hal): {label}", flush=True)
+                print(f"[{n}/{len(documents)}] OK {len(chunks)} chunk, {len(pasal)} diktum/Pasal "
+                      f"(LLM {ocr_pages} hal): {label}", flush=True)
             except Exception as exc:
                 failed += 1
                 print(f"[{n}/{len(documents)}] GAGAL {type(exc).__name__}: {exc} :: {label}", flush=True)
