@@ -25,6 +25,7 @@ class Evidence:
     web_briefs: list[str] = field(default_factory=list)
     retrieved: bool = False
     web_searched: bool = False
+    web_queries: list[str] = field(default_factory=list)
     used_draft_tool: bool = False
     used_channels_tool: bool = False
 
@@ -120,6 +121,8 @@ def build_tools(evidence: Evidence):
     def search_web_resmi(query: str) -> str:
         """Cari berita, jadwal, peraturan terbaru hanya di situs resmi KPU RI/KPU Subang dan Pemkab Subang."""
         evidence.web_searched = True
+        evidence.web_queries.append(query)
+        logger.info("Web search query: %s", query[:200])
         try:
             summary, results = search_official_web(query)
         except Exception as exc:

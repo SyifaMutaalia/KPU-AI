@@ -381,6 +381,9 @@ def answer_question(message: str, history: list[tuple[str, str]]) -> AgentResult
         tools[1].invoke({"query": message})
     elif not evidence.review_refs and not evidence.sources and not evidence.web_searched:
         tools[1].invoke({"query": message})
+    elif evidence.web_searched and not evidence.sources and message not in evidence.web_queries:
+        # Kata kunci susunan agent kadang terlalu sempit; ulangi dengan pertanyaan asli pengguna.
+        tools[1].invoke({"query": message})
 
     _, docs, valid = _citations(answer, evidence)
     logger.info(
