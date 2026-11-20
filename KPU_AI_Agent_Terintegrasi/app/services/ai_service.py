@@ -43,7 +43,7 @@ UNVERIFIED_NOTE = (
 )
 
 _ELECTION_TERMS = re.compile(
-    r"\b(?:tahapan?|kpu|komisi pemilihan umum|pemilu|pemilihan|pilkada|pilpres|pileg|"
+    r"\b(?:tahapan?|kpu|komisi pemilihan umum|pemilu|pemilihan|pilkada|pilkades|kepala desa|pilpres|pileg|"
     r"pemilih|dpt|dptb|dpk|dps|daftar pemilih|tps|pps|ppk|kpps|pkpu|surat suara|"
     r"kampanye|pencalonan|calon|caleg|capres|cawapres|cagub|cawagub|cabup|cawabup|"
     r"peraturan|regulasi|pemungutan|penghitungan suara|rekapitulasi|e-?ppid|jdih|"

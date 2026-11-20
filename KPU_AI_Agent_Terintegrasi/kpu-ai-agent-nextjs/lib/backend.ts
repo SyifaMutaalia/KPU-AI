@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // BFF: browser hanya berkomunikasi dengan Next.js. Kunci AI tetap ada di FastAPI.
-const UPSTREAM_TIMEOUT_MS = 65_000;
+// Pertanyaan yang perlu menelusuri peraturan di web resmi bisa memakan 1-2 menit.
+const UPSTREAM_TIMEOUT_MS = 170_000;
 const SESSION_COOKIE_NAME = 'kpu_session';
 const ADMIN_COOKIE_NAME = 'kpu_admin_session';
 const ADMIN_CSRF_COOKIE_NAME = 'kpu_admin_csrf';

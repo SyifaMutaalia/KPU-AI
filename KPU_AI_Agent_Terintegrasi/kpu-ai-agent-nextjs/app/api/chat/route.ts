@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callFastAPI, checkRequestOrigin, isUuid, parseJsonBody } from '@/lib/backend';
 export const runtime = 'nodejs';
+export const maxDuration = 180;
 export async function POST(request: NextRequest) {
   const denied = checkRequestOrigin(request); if (denied) return denied;
   const data = await parseJsonBody(request);
