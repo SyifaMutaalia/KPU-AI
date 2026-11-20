@@ -64,19 +64,28 @@ def plain(html: str) -> str:
     return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", html))).strip()
 
 
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; KPU-AI-Agent-Ingestion/1.0)"}
+
+
 def get(client: httpx.Client, url: str, **kwargs) -> httpx.Response:
     """GET dengan jeda dan pengulangan: server JDIH kadang lambat atau memutus koneksi."""
-    for attempt in range(4):
+    for attempt in range(6):
         try:
             response = client.get(url, **kwargs)
             response.raise_for_status()
-            time.sleep(0.7)
+            time.sleep(1.5)
             return response
         except httpx.HTTPError:
-            if attempt == 3:
+            if attempt == 5:
                 raise
-            time.sleep(5 * (attempt + 1))
+            time.sleep(min(20 * (attempt + 1), 90))
     raise RuntimeError("unreachable")
+
+
+def download(url: str) -> bytes:
+    """Unduh PDF dengan koneksi baru: koneksi lama yang diputus JDIH tidak dipakai ulang."""
+    with httpx.Client(timeout=180, follow_redirects=True, headers=HEADERS) as client:
+        return get(client, url).content
 
 
 def legal_status(value: str | None) -> str:
@@ -195,8 +204,9 @@ def main() -> int:
         skip = {line.strip() for line in Path(args.skip_hashes).read_text().splitlines() if line.strip()}
     execution_id = f"subang-{time.strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; KPU-AI-Agent-Ingestion/1.0)"}
-    with httpx.Client(timeout=120, follow_redirects=True, headers=headers) as client:
+    # Klien terpisah untuk callback backend, agar gangguan JDIH tidak ikut menggagalkannya.
+    with httpx.Client(timeout=120, follow_redirects=True, headers=HEADERS) as client, \
+            httpx.Client(timeout=60) as backend_client:
         if args.list_file and Path(args.list_file).exists():
             documents = json.loads(Path(args.list_file).read_text())
         else:
@@ -222,12 +232,12 @@ def main() -> int:
                 "title": doc["title"], "year": doc["year"], "namespace": namespace,
             }
             try:
-                content = get(client, doc["pdf_url"]).content
+                content = download(doc["pdf_url"])
                 file_hash = hashlib.sha256(content).hexdigest()
                 if file_hash in skip:
                     skipped += 1
                     continue
-                callback(client, args.backend, secret, {**base, "status": "processing", "file_hash": file_hash})
+                callback(backend_client, args.backend, secret, {**base, "status": "processing", "file_hash": file_hash})
                 text, ocr_pages = pdf_text(content, openai, ocr_model)
                 if len(text) < 200:
                     raise RuntimeError("teks tidak terbaca bahkan setelah OCR")
@@ -251,7 +261,7 @@ def main() -> int:
                         for i, (chunk, v) in enumerate(zip(batch, vectors))
                     ])
                 pasal = {m.group(1) for m in re.finditer(r"\bPasal\s+(\d+[A-Z]?)\b", text)}
-                callback(client, args.backend, secret, {
+                callback(backend_client, args.backend, secret, {
                     **base, "status": "success", "file_hash": file_hash,
                     "chunks_count": len(chunks), "pasal_count": len(pasal) or None,
                     "pinecone_confirmed": True,
@@ -262,7 +272,7 @@ def main() -> int:
                 failed += 1
                 print(f"[{n}/{len(documents)}] GAGAL {type(exc).__name__}: {exc} :: {label}", flush=True)
                 try:
-                    callback(client, args.backend, secret, {**base, "status": "failed"})
+                    callback(backend_client, args.backend, secret, {**base, "status": "failed"})
                 except Exception as cb_exc:
                     print("   callback failed juga gagal:", cb_exc)
         print(f"Selesai: {ok} sukses, {failed} gagal, {skipped} dilewati (sudah ada).")
