@@ -134,7 +134,9 @@ def pdf_markdown(content: bytes, openai: OpenAI, model: str) -> tuple[str, int]:
 
     def page(index: int) -> tuple[str, bool]:
         text = (reader.pages[index].extract_text() or "").strip()
-        if len(text) >= 80:
+        # Watermark JDIH ("jdih.kpu.go.id/jabar/subang") bukan isi dokumen: abaikan saat menilai halaman scan.
+        content_only = re.sub(r"jdih\.kpu\.go\.id/\S*", "", text).strip()
+        if len(content_only) >= 80:
             return text, False
         for attempt in range(3):
             try:
