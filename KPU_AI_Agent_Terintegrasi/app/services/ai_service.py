@@ -149,6 +149,47 @@ def _is_underspecified_timeline(message: str) -> bool:
     )
 
 
+# Data yang hanya ada untuk satu penyelenggaraan tertentu (nama petugas, jumlah TPS/pemilih, hasil).
+_EVENT_SPECIFIC_DATA = re.compile(
+    r"\b(?:(?:siapa|nama)\b.{0,40}\b(?:kpps|pps|ppk|pantarlih|saksi)|"
+    r"(?:kpps|pps|ppk)\b.{0,40}\b(?:siapa|namanya)|"
+    r"(?:jumlah|berapa|banyak(?:nya)?)\b.{0,25}\b(?:tps|pemilih|dpt|surat suara|kursi|suara)|"
+    r"(?:hasil|perolehan suara|pemenang|menang|rekapitulasi suara|suara terbanyak))",
+    re.IGNORECASE,
+)
+_YEAR = re.compile(r"\b(19|20)\d{2}\b")
+_NOW_WORDS = re.compile(r"\b(?:terbaru|terkini|sekarang|saat ini|tahun ini|triwulan|bulan ini|terakhir)\b", re.IGNORECASE)
+
+
+def _current_year() -> int:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).year
+
+
+def _needs_election_year(message: str) -> bool:
+    """Data per penyelenggaraan (mis. ketua KPPS, jumlah TPS) butuh tahun pemilihan yang jelas."""
+    return bool(
+        _EVENT_SPECIFIC_DATA.search(message)
+        and not _YEAR.search(message)
+        and not _NOW_WORDS.search(message)
+        and not _is_personal_dpt_question(message)
+    )
+
+
+def _future_year(message: str) -> int | None:
+    """Tahun pemilihan yang belum terjadi, bila pertanyaan meminta datanya."""
+    if not _EVENT_SPECIFIC_DATA.search(message):
+        return None
+    years = [int(m.group(0)) for m in _YEAR.finditer(message)]
+    future = [y for y in years if y > _current_year()]
+    return max(future) if future else None
+
+
+def _year_in_recent_history(history: list[tuple[str, str]]) -> bool:
+    """Tahun sudah disebut pengguna di pertanyaan sebelumnya (pertanyaan lanjutan)."""
+    return any(role == "user" and _YEAR.search(content) for role, content in (history or [])[-4:])
+
+
 def _is_personal_dpt_question(message: str) -> bool:
     """Route personal voter-location checks to the official self-service portal.
 
@@ -358,6 +399,29 @@ def _answer_core(message: str, history: list[tuple[str, str]]) -> AgentResult:
         )
     if intent == "out_of_scope":
         return AgentResult(answer=OUT_OF_SCOPE_ANSWER, sources=[], grounded=False)
+    if intent == "election" and (year := _future_year(message)):
+        return AgentResult(
+            answer=(
+                f"Pemilihan tahun {year} belum dilaksanakan, jadi datanya (misalnya petugas KPPS, "
+                "jumlah TPS, pemilih, atau hasil suara) belum ada dan belum ditetapkan KPU. "
+                "Data seperti ini biasanya diumumkan KPU Kabupaten Subang menjelang atau setelah "
+                "tahapan pemilihan berjalan. Apakah Anda ingin menanyakan data pemilihan "
+                "sebelumnya, misalnya Pemilu 2024 atau Pilkada 2024?"
+            ),
+            sources=[],
+            grounded=False,
+        )
+    if intent == "election" and _needs_election_year(message) and not _year_in_recent_history(history):
+        return AgentResult(
+            answer=(
+                "Data seperti ini berbeda di setiap penyelenggaraan. Untuk pemilihan yang mana "
+                "dan tahun berapa yang Anda maksud, misalnya Pemilu 2024 (14 Februari 2024) atau "
+                "Pilkada Subang 2024 (27 November 2024)? Setelah itu saya carikan di dokumen "
+                "resmi KPU Kabupaten Subang."
+            ),
+            sources=[],
+            grounded=False,
+        )
 
     from langchain.agents import create_agent
     from langchain_core.messages import AIMessage, HumanMessage
