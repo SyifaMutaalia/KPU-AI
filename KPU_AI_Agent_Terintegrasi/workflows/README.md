@@ -26,6 +26,10 @@ Error apa pun di WF1 ─► WF2 Error Trigger ─► Kirim Error ke Admin
 
 Index (`kpu-subang-rag`), namespace (`kpu_jdih`), dan text splitter tidak diubah.
 
+**Sumber dokumen:** (1) PKPU di JDIH KPU RI, (2) Keputusan KPU Kabupaten Subang di koleksi Kab/Kota JDIH (node *03 - Buka Koleksi KPU Subang* membuka koleksi Kabupaten Subang lalu membaca halaman daftar 1-5).
+
+**OCR dengan LLM (tanpa Tesseract):** setelah *Extract PDF*, node *Cek Teks PDF* menilai apakah PDF hasil scan (teks kurang dari 150 karakter per halaman, watermark JDIH tidak dihitung). PDF scan dikirim utuh ke OpenAI Responses API (*Transkripsi PDF Scan (LLM)*, credential **OpenAI account**) untuk ditranskripsi apa adanya ke Markdown dengan penanda `<!-- PAGE: N -->`. PDF digital tetap memakai teks aslinya. Kedua jalur lalu dipotong per Pasal/diktum (*Potong per Pasal/Diktum*) sebelum embedding, dan metadata `legal_reference` serta `text_source` (`llm_markdown` / `pdf_text`) ikut disimpan.
+
 **Aturan seleksi dokumen** (node *Periksa Link Download* dan *periksa dokumen yang sudah diproses*):
 
 1. Hanya dokumen dengan status **Berlaku** di halaman detail JDIH. Dokumen *Tidak Berlaku*, *Dicabut*, atau yang statusnya tidak terbaca tidak diproses.
