@@ -97,7 +97,12 @@ def _audit(
     )
 
 
-def _send_reset_email(email: str, token: str) -> None:
+def _code_digest(user_id: str, code: str) -> str:
+    # Kode 6 digit diikat ke akun agar kode yang sama milik akun lain tidak berlaku.
+    return _token_digest(f"code:{user_id}:{code}")
+
+
+def _send_reset_email(email: str, token: str, code: str) -> None:
     settings = get_settings()
     if not (settings.smtp_host and settings.smtp_from_email):
         raise RuntimeError("SMTP reset belum dikonfigurasi")
@@ -107,10 +112,11 @@ def _send_reset_email(email: str, token: str) -> None:
     message["From"] = settings.smtp_from_email
     message["To"] = email
     message.set_content(
-        "Gunakan tautan berikut untuk mengatur ulang kata sandi. Tautan berlaku selama 30 menit "
-        "dan hanya dapat digunakan sekali:\n\n"
+        f"Kode verifikasi Anda: {code}\n"
+        "Masukkan kode ini di halaman Atur Kata Sandi (berlaku 15 menit, sekali pakai).\n\n"
+        "Atau gunakan tautan berikut (berlaku 30 menit, sekali pakai):\n"
         + link
-        + "\n\nJika Anda tidak meminta ini, abaikan email ini."
+        + "\n\nJangan bagikan kode ini kepada siapa pun. Jika Anda tidak meminta reset, abaikan email ini."
     )
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
         if settings.smtp_use_tls:
@@ -257,6 +263,7 @@ def forgot_password(
             PasswordResetToken.user_id == user.id,
             PasswordResetToken.used_at.is_(None),
         ).update({PasswordResetToken.used_at: utcnow()}, synchronize_session=False)
+        code = f"{secrets.randbelow(1_000_000):06d}"
         db.add(
             PasswordResetToken(
                 user_id=user.id,
@@ -264,29 +271,46 @@ def forgot_password(
                 expires_at=utcnow() + timedelta(minutes=30),
             )
         )
+        db.add(
+            PasswordResetToken(
+                user_id=user.id,
+                token_hash=_code_digest(user.id, code),
+                expires_at=utcnow() + timedelta(minutes=15),
+            )
+        )
         db.commit()
         try:
-            _send_reset_email(user.email, token)
+            _send_reset_email(user.email, token, code)
         except (OSError, smtplib.SMTPException, RuntimeError):
             logger.exception(
                 "Pengiriman email reset admin gagal untuk akun yang cocok; token tidak dicatat."
             )
     return AdminMessageOut(
-        message="Jika akun cocok, instruksi reset akan dikirim ke email terdaftar."
+        message="Jika akun cocok, kode verifikasi dan tautan reset dikirim ke email terdaftar."
     )
 
 
 @router.post("/auth/reset-password", response_model=AdminMessageOut)
 def reset_password(
     payload: ResetPasswordIn,
+    request: Request,
     _csrf: None = Depends(require_guest_csrf),
     db: Session = Depends(get_db),
 ):
     now = utcnow()
+    if payload.token:
+        digest = _token_digest(payload.token)
+    else:
+        # Kode 6 digit mudah ditebak tanpa pembatas: batasi percobaan per klien.
+        consume_rate_limit(
+            db, "reset_code", request_client_key(request), get_settings().admin_reset_rate_limit
+        )
+        account = db.scalar(select(AdminUser).where(AdminUser.email == payload.email))
+        digest = _code_digest(account.id, payload.code) if account else "-"
     user_id = db.scalar(
         update(PasswordResetToken)
         .where(
-            PasswordResetToken.token_hash == _token_digest(payload.token),
+            PasswordResetToken.token_hash == digest,
             PasswordResetToken.used_at.is_(None),
             PasswordResetToken.expires_at > now,
         )

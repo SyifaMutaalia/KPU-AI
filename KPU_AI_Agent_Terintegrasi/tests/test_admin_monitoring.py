@@ -174,7 +174,7 @@ def test_forgot_password_is_non_enumerating_and_reset_token_is_one_time(
     issued = {}
     monkeypatch.setattr(
         "app.api.routes.admin._send_reset_email",
-        lambda email, token: issued.update(email=email, token=token),
+        lambda email, token, code: issued.update(email=email, token=token, code=code),
     )
 
     csrf = client.get("/api/v1/admin/auth/csrf").json()["csrf_token"]
@@ -199,9 +199,13 @@ def test_forgot_password_is_non_enumerating_and_reset_token_is_one_time(
 
     with Session(get_engine()) as db:
         reset = db.scalar(
-            select(PasswordResetToken).where(PasswordResetToken.user_id == user_id)
+            select(PasswordResetToken).where(
+                PasswordResetToken.user_id == user_id,
+                PasswordResetToken.token_hash == hashlib.sha256(issued["token"].encode()).hexdigest(),
+            )
         )
-        assert reset.token_hash == hashlib.sha256(issued["token"].encode()).hexdigest()
+        assert reset is not None
+        assert len(issued["code"]) == 6 and issued["code"].isdigit()
         assert issued["token"] not in reset.token_hash
 
     reset_response = client.post(
@@ -417,3 +421,34 @@ def test_admin_can_trigger_wf1_and_summary_counts_open_errors(client, monkeypatc
     summary = client.get("/api/v1/admin/dashboard/summary").json()
     assert summary["open_errors"] == 1
     assert summary["workflows"]["WF2"]["status"] == "failed"
+
+
+def test_reset_password_with_email_verification_code(client, monkeypatch):
+    create_admin(must_change=False)
+    issued = {}
+    monkeypatch.setattr(
+        "app.api.routes.admin._send_reset_email",
+        lambda email, token, code: issued.update(email=email, token=token, code=code),
+    )
+    csrf = client.get("/api/v1/admin/auth/csrf").json()["csrf_token"]
+    headers = {"X-CSRF-Token": csrf}
+    assert client.post("/api/v1/admin/auth/forgot-password", json={"email": "admin@example.org"}, headers=headers).status_code == 200
+    wrong = "000000" if issued["code"] != "000000" else "111111"
+    bad = client.post(
+        "/api/v1/admin/auth/reset-password",
+        json={"email": "admin@example.org", "code": wrong, "password": "Code-Admin-Password-2026"},
+        headers=headers,
+    )
+    assert bad.status_code == 400
+    good = client.post(
+        "/api/v1/admin/auth/reset-password",
+        json={"email": "admin@example.org", "code": issued["code"], "password": "Code-Admin-Password-2026"},
+        headers=headers,
+    )
+    assert good.status_code == 200, good.text
+    again = client.post(
+        "/api/v1/admin/auth/reset-password",
+        json={"email": "admin@example.org", "code": issued["code"], "password": "Other-Admin-Password-2026"},
+        headers=headers,
+    )
+    assert again.status_code == 400

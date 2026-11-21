@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import KpuLogo from '@/components/KpuLogo';
+import { httpErrorMessage } from '@/lib/httpError';
 
 type FormKind = 'login' | 'forgot' | 'reset' | 'change';
 type Props = { kind: FormKind; token?: string };
@@ -11,7 +12,7 @@ type Props = { kind: FormKind; token?: string };
 async function getCsrf() {
   const response = await fetch('/api/admin/auth/csrf', { cache: 'no-store' });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.detail || data.error || 'Gagal menyiapkan proteksi formulir.');
+  if (!response.ok) throw new Error(httpErrorMessage(response.status, data));
   sessionStorage.setItem('admin-csrf-token', data.csrf_token);
   return data.csrf_token as string;
 }
@@ -21,6 +22,8 @@ export default function AdminAuthForms({ kind, token }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
+  const [code, setCode] = useState('');
+  const useCode = kind === 'reset' && !token;
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -33,8 +36,8 @@ export default function AdminAuthForms({ kind, token }: Props) {
   };
   const descriptions: Record<FormKind, string> = {
     login: 'Masuk untuk melihat status ingestion dokumen dan error workflow.',
-    forgot: 'Jika email terdaftar, instruksi reset akan dikirim.',
-    reset: 'Tautan reset hanya dapat digunakan sekali dan memiliki masa berlaku.',
+    forgot: 'Jika email terdaftar, kode verifikasi 6 digit dan tautan reset akan dikirim ke email Anda.',
+    reset: token ? 'Tautan reset hanya dapat digunakan sekali dan memiliki masa berlaku.' : 'Masukkan email admin dan kode verifikasi 6 digit dari email (berlaku 15 menit).',
     change: 'Penggantian kata sandi wajib dilakukan sebelum mengakses dashboard.',
   };
 
@@ -50,7 +53,7 @@ export default function AdminAuthForms({ kind, token }: Props) {
         : kind === 'forgot'
           ? { email }
           : kind === 'reset'
-            ? { token, password }
+            ? (useCode ? { email, code, password } : { token, password })
             : { current_password: currentPassword, new_password: password };
       const endpoint = kind === 'login' ? 'login'
         : kind === 'forgot' ? 'forgot-password'
@@ -61,7 +64,7 @@ export default function AdminAuthForms({ kind, token }: Props) {
         body: JSON.stringify(body),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || result.error || 'Permintaan gagal.');
+      if (!response.ok) throw new Error(httpErrorMessage(response.status, result));
       if (kind === 'login') {
         sessionStorage.setItem('admin-csrf-token', result.csrf_token);
         router.replace(result.user.must_change_password ? '/admin/change-password' : '/admin/dashboard');
@@ -90,8 +93,11 @@ export default function AdminAuthForms({ kind, token }: Props) {
         {notice && <p className="auth-notice" role="status">{notice}</p>}
         {error && <p className="error-box" role="alert">{error}</p>}
         <form onSubmit={submit}>
-          {kind === 'login' || kind === 'forgot' ? (
+          {kind === 'login' || kind === 'forgot' || useCode ? (
             <label>Email admin<input type="email" autoComplete="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+          ) : null}
+          {useCode ? (
+            <label>Kode verifikasi<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" required maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} placeholder="6 digit" /></label>
           ) : null}
           {kind === 'change' ? (
             <label>Kata sandi saat ini<input type="password" autoComplete="current-password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
@@ -110,6 +116,7 @@ export default function AdminAuthForms({ kind, token }: Props) {
         </form>
         <div className="auth-links">
           {kind === 'login' && <Link href="/admin/forgot-password">Lupa kata sandi?</Link>}
+          {kind === 'forgot' && <Link href="/admin/reset-password">Sudah punya kode verifikasi?</Link>}
           {(kind === 'forgot' || kind === 'reset') && <Link href="/admin/login">Kembali ke login</Link>}
         </div>
         <small className="auth-foot">Akses terbatas untuk administrator. Tidak tersedia registrasi publik.</small>

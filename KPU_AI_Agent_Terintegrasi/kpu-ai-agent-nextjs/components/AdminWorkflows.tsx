@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import AdminShell from '@/components/AdminShell';
+import { httpErrorMessage } from '@/lib/httpError';
 
 type Workflow = { id: string; name: string; active: boolean; updated_at: string | null; tags: string[] };
 type Execution = {
@@ -27,7 +28,7 @@ export default function AdminWorkflows() {
     try {
       const response = await fetch('/api/admin/dashboard/workflows', { cache: 'no-store' });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || result.error || 'Gagal memuat workflow n8n.');
+      if (!response.ok) throw new Error(httpErrorMessage(response.status, result));
       setData(result);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Gagal memuat workflow n8n.');

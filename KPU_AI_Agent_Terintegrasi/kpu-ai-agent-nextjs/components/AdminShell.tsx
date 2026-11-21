@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 import KpuLogo from '@/components/KpuLogo';
+import { httpErrorMessage } from '@/lib/httpError';
 
 type Props = { children: ReactNode };
 
@@ -16,6 +17,10 @@ export default function AdminShell({ children }: Props) {
   const [error, setError] = useState('');
   const [n8nStatus, setN8nStatus] = useState('Memeriksa n8n...');
   const [openErrors, setOpenErrors] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Tutup sidebar mobile setiap pindah halaman.
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
 
   useEffect(() => {
     if (!email) return;
@@ -39,14 +44,14 @@ export default function AdminShell({ children }: Props) {
       try {
         const tokenResponse = await fetch('/api/admin/auth/csrf', { cache: 'no-store' });
         const tokenData = await tokenResponse.json();
-        if (!tokenResponse.ok) throw new Error(tokenData.detail || tokenData.error || 'Gagal memuat proteksi sesi.');
+        if (!tokenResponse.ok) throw new Error(httpErrorMessage(tokenResponse.status, tokenData));
         const response = await fetch('/api/admin/auth/me', { cache: 'no-store' });
         if (response.status === 401) {
           router.replace('/admin/login');
           return;
         }
         const user = await response.json();
-        if (!response.ok) throw new Error(user.detail || 'Tidak dapat memverifikasi akses admin.');
+        if (!response.ok) throw new Error(httpErrorMessage(response.status, user));
         if (user.must_change_password && pathname !== '/admin/change-password') {
           router.replace('/admin/change-password');
           return;
@@ -83,7 +88,7 @@ export default function AdminShell({ children }: Props) {
         method: 'POST',
         headers: { 'X-CSRF-Token': sessionStorage.getItem('admin-csrf-token') || csrf },
       });
-      if (!response.ok) throw new Error('Logout gagal. Coba muat ulang halaman.');
+      if (!response.ok) throw new Error(httpErrorMessage(response.status, {}));
       router.replace('/admin/login');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Logout gagal.');
@@ -94,8 +99,10 @@ export default function AdminShell({ children }: Props) {
   if (error && !email) return <main className="admin-loading"><p role="alert">{error}</p><Link href="/admin/login">Kembali ke login</Link></main>;
 
   return (
-    <div className="admin-layout">
-      <aside className="admin-sidebar">
+    <div className={`admin-layout ${menuOpen ? 'menu-open' : ''}`}>
+      {menuOpen && <button className="sidebar-backdrop" aria-label="Tutup menu" onClick={() => setMenuOpen(false)} />}
+      <aside className="admin-sidebar" id="admin-sidebar">
+        <button className="sidebar-close" aria-label="Tutup menu" onClick={() => setMenuOpen(false)}>×</button>
         <Link className="admin-brand" href="/admin/dashboard"><KpuLogo /><span>KPU Admin<small>Monitoring ingestion</small></span></Link>
         <nav aria-label="Navigasi admin">
           <Link className={pathname === '/admin/dashboard' ? 'admin-nav active' : 'admin-nav'} href="/admin/dashboard">Ringkasan</Link>
@@ -106,7 +113,10 @@ export default function AdminShell({ children }: Props) {
         <div className="admin-user"><span>{email}</span><button className="button secondary" onClick={logout}>Keluar</button></div>
       </aside>
       <main className="admin-main">
-        <div className="admin-n8n-status" role="status">{n8nStatus}</div>
+        <div className="admin-topline">
+          <button className="menu-toggle" aria-label="Buka menu" aria-expanded={menuOpen} aria-controls="admin-sidebar" onClick={() => setMenuOpen(true)}><span /><span /><span /></button>
+          <div className="admin-n8n-status" role="status">{n8nStatus}</div>
+        </div>
         {openErrors > 0 && <div className="admin-alert" role="alert"><b>⚠ {openErrors} error ingestion belum ditangani.</b><span>Workflow n8n melaporkan kegagalan. Periksa detail dan jalankan Retry bila perlu.</span><Link href="/admin/dashboard/errors">Lihat error log</Link></div>}
         {error && <div className="error-box" role="alert">{error}</div>}
         {children}

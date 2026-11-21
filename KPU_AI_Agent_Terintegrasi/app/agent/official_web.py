@@ -130,3 +130,41 @@ def search_official_web(query: str) -> tuple[str, list[Source]]:
         )
     summary = re.sub(r"cite.*?", "", response.output_text or "").strip()
     return summary[:4500], cited
+
+
+def fetch_official_page(url: str) -> tuple[str, str, str]:
+    """Unduh satu halaman resmi (hanya domain allowlist) dan kembalikan (judul, teks, url bersih)."""
+    import html as html_lib
+
+    import httpx
+
+    clean = _clean_url(url.strip())
+    if not is_official_web_url(clean):
+        raise ValueError("Bukan domain resmi yang diizinkan")
+    with httpx.Client(timeout=15.0, follow_redirects=False,
+                      headers={"User-Agent": "Mozilla/5.0 (compatible; KPU-AI-Agent/1.0)"}) as client:
+        response = client.get(clean)
+        hops = 0
+        while response.is_redirect and hops < 3:  # ikuti redirect hanya bila tetap di domain resmi
+            target = _clean_url(str(response.next_request.url)) if response.next_request else ""
+            if not is_official_web_url(target):
+                raise ValueError("Redirect ke luar domain resmi")
+            response = client.get(target)
+            clean, hops = target, hops + 1
+        response.raise_for_status()
+    content_type = response.headers.get("content-type", "")
+    if "pdf" in content_type:
+        from io import BytesIO
+
+        from pypdf import PdfReader
+
+        reader = PdfReader(BytesIO(response.content))
+        text = "\n".join((page.extract_text() or "") for page in reader.pages[:15])
+        title = urlsplit(clean).path.rstrip("/").split("/")[-1] or clean
+        return _clean_title(title, clean), re.sub(r"\s+", " ", text).strip()[:8000], clean
+    raw = response.text[:600_000]
+    match = re.search(r"<title[^>]*>(.*?)</title>", raw, flags=re.S | re.I)
+    title = html_lib.unescape(re.sub(r"\s+", " ", match.group(1))).strip() if match else ""
+    body = re.sub(r"<(script|style|noscript|svg|nav|footer|header)[^>]*>.*?</\1>", " ", raw, flags=re.S | re.I)
+    text = html_lib.unescape(re.sub(r"<[^>]+>", " ", body))
+    return _clean_title(title, clean), re.sub(r"\s+", " ", text).strip()[:8000], clean

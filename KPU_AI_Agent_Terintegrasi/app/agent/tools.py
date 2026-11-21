@@ -167,24 +167,39 @@ def build_tools(evidence: Evidence):
 
     @tool
     def official_channels() -> str:
-        """Dapatkan alamat kanal resmi KPU untuk informasi, hukum, dan permohonan."""
+        """Daftar layanan resmi KPU RI, KPU Kabupaten Subang, dan Pemkab Subang (cek DPT, info calon,
+        hasil pemilu/pilkada, JDIH, PPID/e-PPID, berita). Gunakan untuk mengarahkan warga ke layanan yang tepat."""
+        from app.agent.official_services import catalog
+
         evidence.used_channels_tool = True
-        s = get_settings()
         return json.dumps(
-            {
-                "website": s.kpu_website_url,
-                "kpu_ri": "https://www.kpu.go.id/",
-                "pemkab_subang": "https://subang.go.id/",
-                "jdih": s.jdih_url,
-                "eppid": s.eppid_url,
-                "note": "e-PPID adalah kanal permohonan, bukan sumber dokumen terindeks.",
-            },
+            {"layanan": catalog(),
+             "note": "Arahkan warga ke layanan yang sesuai. e-PPID adalah kanal permohonan, bukan sumber dokumen terindeks."},
             ensure_ascii=False,
         )
+
+    @tool
+    def read_official_page(url: str) -> str:
+        """Baca isi satu halaman di situs resmi (kpu.go.id, kab-subang.kpu.go.id, jdih.kpu.go.id, subang.go.id,
+        peraturan.bpk.go.id). Pakai untuk membuka halaman yang ditemukan search_web_resmi atau disebut pengguna,
+        bila ringkasan pencarian belum cukup rinci."""
+        from app.agent.official_web import fetch_official_page
+
+        evidence.web_searched = True
+        try:
+            title, text, clean_url = fetch_official_page(url)
+        except Exception as exc:
+            logger.warning("Baca halaman resmi gagal: %s", type(exc).__name__)
+            return json.dumps({"status": "gagal_dibuka", "url": url[:300]}, ensure_ascii=False)
+        idx = get_or_add_source(title, clean_url)
+        evidence.source_evidence.setdefault(idx, []).append(text[:3500])
+        return json.dumps({"status": "ditemukan", "id": idx, "title": title, "url": clean_url, "isi": text[:6000]},
+                          ensure_ascii=False)
 
     return [
         search_kpu_documents,
         search_web_resmi,
         prepare_eppid_draft,
         official_channels,
+        read_official_page,
     ]

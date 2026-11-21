@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class AdminLoginIn(BaseModel):
@@ -38,7 +38,22 @@ class ForgotPasswordIn(BaseModel):
 
 
 class ResetPasswordIn(AdminPasswordIn):
-    token: str = Field(min_length=32, max_length=256)
+    """Reset dengan tautan email (token) ATAU dengan email + kode verifikasi 6 digit."""
+
+    token: str | None = Field(default=None, min_length=32, max_length=256)
+    email: str | None = Field(default=None, min_length=3, max_length=320)
+    code: str | None = Field(default=None, pattern=r"^\d{6}$")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_reset_email(cls, value: str | None) -> str | None:
+        return value.strip().lower() if value else value
+
+    @model_validator(mode="after")
+    def token_or_code(self):
+        if not self.token and not (self.email and self.code):
+            raise ValueError("Isi tautan reset, atau email beserta kode verifikasi 6 digit.")
+        return self
 
 
 class ChangePasswordIn(BaseModel):

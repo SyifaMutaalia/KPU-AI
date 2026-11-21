@@ -2,6 +2,15 @@
   "name": "WF1 - Ingestion PDF KPU per Pasal",
   "nodes": [
     {
+      "id": "a11b840b-daac-4ba4-aec9-5469c2af81f4",
+      "name": "Webhook Ingestion",
+      "webhookId": "de593c26-9067-4ed7-be74-2c253c10e0ff",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        800,
+        208
+      ],
       "parameters": {
         "httpMethod": "POST",
         "path": "kpu-ingest-pdf",
@@ -9,23 +18,22 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "eb56ad4e-840c-45b4-90e8-f210302c9057",
-      "name": "Webhook Ingestion",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        800,
-        208
-      ],
-      "webhookId": "de593c26-9067-4ed7-be74-2c253c10e0ff",
       "credentials": {
         "httpHeaderAuth": {
-          "id": "1eAKRoqB0spkMA4t",
-          "name": "KPU - Webhook Ingestion Auth"
+          "id": "p3kokG3ig7fNfDLV",
+          "name": "KPU Admin Webhook Secret (Vercel)"
         }
       }
     },
     {
+      "id": "46e8b535-6364-4fc4-a6a1-3ce131d69f38",
+      "name": "Download PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2164,
+        400
+      ],
       "parameters": {
         "url": "={{ $json.pdf_url }}",
         "options": {
@@ -35,31 +43,31 @@
             }
           }
         }
-      },
-      "id": "4432c77f-a074-45a9-b787-c9c06c5096bb",
-      "name": "Download PDF",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2164,
-        400
-      ]
+      }
     },
     {
-      "parameters": {
-        "operation": "pdf",
-        "options": {}
-      },
-      "id": "5528a5b9-1c45-4ba7-a2fb-b064223b70bd",
+      "id": "8bf5c7a0-6479-43d3-918d-413f4d500212",
       "name": "Extract PDF",
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
       "position": [
         2842,
         400
-      ]
+      ],
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      }
     },
     {
+      "id": "b379095a-75d9-42f9-b3af-cf48bbfef0f4",
+      "name": "Pinecone Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.4,
+      "position": [
+        3102,
+        400
+      ],
       "parameters": {
         "mode": "insert",
         "pineconeIndex": {
@@ -72,14 +80,6 @@
           "pineconeNamespace": "=kpu_jdih"
         }
       },
-      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
-      "typeVersion": 1.4,
-      "position": [
-        3102,
-        400
-      ],
-      "id": "ec9ca6ab-718d-431e-8f4b-51744cfdb0e5",
-      "name": "Pinecone Vector Store",
       "credentials": {
         "pineconeApi": {
           "id": "MR6PbOuxMO8yL2Vk",
@@ -88,19 +88,19 @@
       }
     },
     {
-      "parameters": {
-        "options": {
-          "batchSize": 512
-        }
-      },
+      "id": "22722a75-700f-4975-8516-ff54c577ce9d",
+      "name": "Embeddings OpenAI",
       "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
       "typeVersion": 1.2,
       "position": [
         3054,
         600
       ],
-      "id": "40c0b5be-448d-4f89-b5ad-af4dad51a5c9",
-      "name": "Embeddings OpenAI",
+      "parameters": {
+        "options": {
+          "batchSize": 512
+        }
+      },
       "credentials": {
         "openAiApi": {
           "id": "CQtiURLB6FIbkOMI",
@@ -109,6 +109,14 @@
       }
     },
     {
+      "id": "083e1d3c-2d8a-4cea-b5b4-5ebe4fc5d39e",
+      "name": "setiap hari pukul 06.00 WIB",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -208,
+        704
+      ],
       "parameters": {
         "rule": {
           "interval": [
@@ -117,17 +125,17 @@
             }
           ]
         }
-      },
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.4,
-      "position": [
-        -208,
-        704
-      ],
-      "id": "d4d63502-b5cb-414c-a916-0d5768447f0d",
-      "name": "setiap hari pukul 06.00 WIB"
+      }
     },
     {
+      "id": "ba316e5d-7956-4af8-b637-3e2d82e7f809",
+      "name": "periksa dokumen yang sudah diproses",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        864,
+        704
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT\n    $1::text AS pdf_url,\n    EXISTS (\n        SELECT 1\n        FROM ingestion.documents\n        WHERE source_url = $1\n          AND status = 'success'\n    ) AS already_processed;\n",
@@ -136,22 +144,22 @@
           "queryReplacement": "={{ $json.pdf_url }}"
         }
       },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.8,
-      "position": [
-        864,
-        704
-      ],
-      "id": "4e0515f0-5f30-4e82-b8f8-ed2a25e63dab",
-      "name": "periksa dokumen yang sudah diproses",
       "credentials": {
         "postgres": {
-          "id": "0Rn5Q1c1QwV0mrCu",
-          "name": "Postgres account"
+          "id": "Y8KB78JHGXmj2IuW",
+          "name": "KPU Neon App DB"
         }
       }
     },
     {
+      "id": "949d52c1-153b-46a6-a484-2fc9390c2463",
+      "name": "dokumen baru atau berubah?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1072,
+        704
+      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -175,17 +183,17 @@
           "combinator": "and"
         },
         "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.4,
-      "position": [
-        1072,
-        704
-      ],
-      "id": "187ccd51-e322-47d6-aa52-14c9fcc14a4c",
-      "name": "dokumen baru atau berubah?"
+      }
     },
     {
+      "id": "1a491da0-9e5b-4164-a8fc-67032ca8af11",
+      "name": "02 - Ambil Daftar Dokumen JDIH",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        64,
+        704
+      ],
       "parameters": {
         "url": "=https://jdih.kpu.go.id",
         "options": {
@@ -196,17 +204,17 @@
             }
           }
         }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.5,
-      "position": [
-        64,
-        704
-      ],
-      "id": "4b5f9401-69c5-482f-9f34-781eeb99118d",
-      "name": "02 - Ambil Daftar Dokumen JDIH"
+      }
     },
     {
+      "id": "0d20b318-c6eb-4b1e-9cfa-22018a0c7ac5",
+      "name": "Default Data Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        3230,
+        616
+      ],
       "parameters": {
         "textSplittingMode": "custom",
         "options": {
@@ -249,30 +257,31 @@
         },
         "jsonMode": "expressionData",
         "jsonData": "={{ $('Extract PDF').item.json.text }}"
-      },
-      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
-      "typeVersion": 1.1,
-      "position": [
-        3230,
-        616
-      ],
-      "id": "c112e403-7b25-46be-94a1-0ea6ec31e8f2",
-      "name": "Default Data Loader"
+      }
     },
     {
-      "parameters": {
-        "jsCode": "const html = $input.first().json.html || \"\";\n\nconst matches = [...html.matchAll(\n  /href\\s*=\\s*[\"']([^\"']+)[\"']/gi\n)];\n\nconst detailUrls = [...new Set(\n  matches.map(m => m[1]).filter(url =>\n    /^https:\\/\\/jdih\\.kpu\\.go\\.id\\/(peraturan-kpu|keputusan-kpu)\\/detail\\//i.test(url)\n  )\n)];\n\nreturn detailUrls.map(detail_url => ({\n  json: { detail_url, source: \"JDIH KPU\" }\n}));\n"
-      },
+      "id": "e4333486-ee32-4ee9-b873-948655a340fb",
+      "name": "ambil URL dan metadata PDF",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         272,
         704
       ],
-      "id": "b77cb3d0-8a58-4f8c-afe0-bf839e265dd8",
-      "name": "ambil URL dan metadata PDF"
+      "parameters": {
+        "jsCode": "const html = $input.first().json.html || \"\";\n\nconst matches = [...html.matchAll(\n  /href\\s*=\\s*[\"']([^\"']+)[\"']/gi\n)];\n\nconst detailUrls = [...new Set(\n  matches.map(m => m[1]).filter(url =>\n    /^https:\\/\\/jdih\\.kpu\\.go\\.id\\/(peraturan-kpu|keputusan-kpu)\\/detail\\//i.test(url)\n  )\n)];\n\nreturn detailUrls.map(detail_url => ({\n  json: { detail_url, source: \"JDIH KPU\" }\n}));\n"
+      }
     },
     {
+      "id": "b7dc8721-cc21-4d67-9dec-fdba34be4a75",
+      "name": "Ambil Detail Dokumen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "alwaysOutputData": false,
+      "position": [
+        464,
+        704
+      ],
       "parameters": {
         "url": "={{ $json.detail_url }}",
         "options": {
@@ -283,72 +292,71 @@
             }
           }
         }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.5,
-      "position": [
-        464,
-        704
-      ],
-      "id": "40480f08-991e-497f-bf08-8bc2fa87a572",
-      "name": "Ambil Detail Dokumen",
-      "alwaysOutputData": false
+      }
     },
     {
-      "parameters": {
-        "jsCode": "const results = [];\nconst seen = new Set();\n\n// Status keberlakuan dan judul dibaca dari halaman detail JDIH.\n// Jika tidak terbaca, status = belum_diverifikasi (chatbot memberi catatan).\nconst plain = (s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ')\n  .replace(/&amp;/g, '&').replace(/\\s+/g, ' ').trim();\n\nfunction legalStatus(html) {\n  const m = plain(html).match(/status(?:\\s+(?:peraturan|dokumen|hukum))?\\s*:?\\s*(tidak\\s+berlaku|dicabut|berlaku|diubah)/i);\n  if (!m) return 'belum_diverifikasi';\n  const v = m[1].toLowerCase().replace(/\\s+/g, ' ');\n  if (v === 'berlaku') return 'berlaku';\n  if (v === 'diubah') return 'belum_diverifikasi';\n  return 'tidak_berlaku';\n}\n\nfunction pageTitle(html) {\n  // Halaman detail JDIH menulis judul lengkap sebelum label \"Tipe Dokumen :\".\n  const full = plain(html).match(/((?:Peraturan|Keputusan) Komisi Pemilihan Umum Nomor \\d+ Tahun \\d{4} tentang .+?)\\s+Tipe Dokumen\\s*:/i);\n  if (full) return full[1].trim().slice(0, 500);\n  const candidates = [\n    (html.match(/<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)[\"']/i) || [])[1],\n    (html.match(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i) || [])[1],\n    (html.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i) || [])[1],\n  ].map(plain).filter((t) => t.length >= 10 && !/^JDIH\\b/i.test(t));\n  return candidates.length ? candidates[0].slice(0, 500) : null;\n}\n\nfor (const item of $input.all()) {\n  const html = item.json.html || \"\";\n  const title = pageTitle(html);\n  const legal_status = legalStatus(html);\n\n  const matches = [...html.matchAll(\n    /(?:href|src)\\s*=\\s*[\"']([^\"']+\\.pdf(?:\\?[^\"']*)?)[\"']/gi\n  )];\n\n  for (const match of matches) {\n    let pdf_url = match[1].replace(/&amp;/g, \"&\");\n\n    if (pdf_url.startsWith(\"//\")) {\n      pdf_url = \"https:\" + pdf_url;\n    } else if (pdf_url.startsWith(\"/\")) {\n      pdf_url = \"https://jdih.kpu.go.id\" + pdf_url;\n    } else if (!/^https?:\\/\\//i.test(pdf_url)) {\n      pdf_url = \"https://jdih.kpu.go.id/\" + pdf_url;\n    }\n\n    if (!pdf_url.startsWith(\"https://jdih.kpu.go.id/\")) {\n      continue;\n    }\n\n    if (!pdf_url.includes(\"/data/data_pkpu/\")) {\n      continue;\n    }\n\n    // Versi terjemahan bahasa Inggris tidak diindeks (isi sama, bahasa berbeda).\n    if (/_english\\.pdf$/i.test(pdf_url)) continue;\n\n    if (seen.has(pdf_url)) continue;\n    seen.add(pdf_url);\n\n    results.push({\n      json: {\n        pdf_url,\n        source: \"JDIH KPU\",\n        document_type: \"PKPU\",\n        title,\n        legal_status,\n        detail_url: item.json.detail_url ?? null,\n      }\n    });\n  }\n}\n\nreturn results;\n"
-      },
+      "id": "fdb0ba48-1614-4e0b-a30a-cc5d09aa4f58",
+      "name": "Periksa Link Download",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         656,
         704
       ],
-      "id": "976f3067-fe42-4835-a583-822a5b6ce112",
-      "name": "Periksa Link Download"
+      "parameters": {
+        "jsCode": "const results = [];\n// Hanya dokumen yang statusnya BERLAKU dan terbit tahun 2024-2026 yang diproses.\nconst TAHUN_MIN = 2024, TAHUN_MAX = 2026;\nfunction docYear(title, pdfUrl) {\n  const t = String(title || '').match(/Tahun\\s+((?:19|20)\\d{2})/i);\n  if (t) return Number(t[1]);\n  const f = decodeURIComponent(String(pdfUrl).split(/[?#]/)[0].split('/').pop() || '').match(/((?:19|20)\\d{2})\\s*_?(?:pkpu|kpt|kep)/i);\n  return f ? Number(f[1]) : null;\n}\nconst seen = new Set();\n\n// Status keberlakuan dan judul dibaca dari halaman detail JDIH.\n// Jika tidak terbaca, status = belum_diverifikasi (chatbot memberi catatan).\nconst plain = (s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ')\n  .replace(/&amp;/g, '&').replace(/\\s+/g, ' ').trim();\n\nfunction legalStatus(html) {\n  const m = plain(html).match(/status(?:\\s+(?:peraturan|dokumen|hukum))?\\s*:?\\s*(tidak\\s+berlaku|dicabut|berlaku|diubah)/i);\n  if (!m) return 'belum_diverifikasi';\n  const v = m[1].toLowerCase().replace(/\\s+/g, ' ');\n  if (v === 'berlaku') return 'berlaku';\n  if (v === 'diubah') return 'belum_diverifikasi';\n  return 'tidak_berlaku';\n}\n\nfunction pageTitle(html) {\n  // Halaman detail JDIH menulis judul lengkap sebelum label \"Tipe Dokumen :\".\n  const full = plain(html).match(/((?:Peraturan|Keputusan) Komisi Pemilihan Umum Nomor \\d+ Tahun \\d{4} tentang .+?)\\s+Tipe Dokumen\\s*:/i);\n  if (full) return full[1].trim().slice(0, 500);\n  const candidates = [\n    (html.match(/<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)[\"']/i) || [])[1],\n    (html.match(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i) || [])[1],\n    (html.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i) || [])[1],\n  ].map(plain).filter((t) => t.length >= 10 && !/^JDIH\\b/i.test(t));\n  return candidates.length ? candidates[0].slice(0, 500) : null;\n}\n\nfor (const item of $input.all()) {\n  const html = item.json.html || \"\";\n  const title = pageTitle(html);\n  const legal_status = legalStatus(html);\n\n  const matches = [...html.matchAll(\n    /(?:href|src)\\s*=\\s*[\"']([^\"']+\\.pdf(?:\\?[^\"']*)?)[\"']/gi\n  )];\n\n  for (const match of matches) {\n    let pdf_url = match[1].replace(/&amp;/g, \"&\");\n\n    if (pdf_url.startsWith(\"//\")) {\n      pdf_url = \"https:\" + pdf_url;\n    } else if (pdf_url.startsWith(\"/\")) {\n      pdf_url = \"https://jdih.kpu.go.id\" + pdf_url;\n    } else if (!/^https?:\\/\\//i.test(pdf_url)) {\n      pdf_url = \"https://jdih.kpu.go.id/\" + pdf_url;\n    }\n\n    if (!pdf_url.startsWith(\"https://jdih.kpu.go.id/\")) {\n      continue;\n    }\n\n    if (!pdf_url.includes(\"/data/data_pkpu/\")) {\n      continue;\n    }\n\n    // Versi terjemahan bahasa Inggris tidak diindeks (isi sama, bahasa berbeda).\n    if (/_english\\.pdf$/i.test(pdf_url)) continue;\n\n    if (seen.has(pdf_url)) continue;\n    if (legal_status !== 'berlaku') continue;            // tidak berlaku / belum jelas: lewati\n    const year = docYear(title, pdf_url);\n    if (!year || year < TAHUN_MIN || year > TAHUN_MAX) continue;\n    seen.add(pdf_url);\n\n    results.push({\n      json: {\n        pdf_url,\n        source: \"JDIH KPU\",\n        document_type: \"PKPU\",\n        title,\n        legal_status,\n        year,\n        detail_url: item.json.detail_url ?? null,\n      }\n    });\n  }\n}\n\nreturn results;\n"
+      }
     },
     {
-      "parameters": {
-        "options": {}
-      },
+      "id": "38583e4c-6e1e-4866-8090-dd74fe3917b4",
+      "name": "Recursive Character Text Splitter",
       "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
       "typeVersion": 1,
       "position": [
         3326,
         824
       ],
-      "id": "5ddb4db8-0bbd-440f-8ea5-683203bc114a",
-      "name": "Recursive Character Text Splitter"
+      "parameters": {
+        "options": {}
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// Input dari webhook: manual ingest ({ pdf_url, title?, ... }) atau Retry dari dashboard admin ({ error_id, ... }).\nconst body = $input.first().json.body ?? {};\nconst pick = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);\nconst pdfUrl = pick(body.pdf_url);\nif (pdfUrl && !/^https:\\/\\/[^\\s]+$/i.test(pdfUrl)) {\n  throw new Error('pdf_url harus berupa URL https.');\n}\nconst yearNum = Number(body.year);\nreturn [{\n  json: {\n    pdf_url: pdfUrl,\n    retry_error_id: pick(body.retry_error_id) ?? pick(body.error_id),\n    source: pick(body.source) ?? (pdfUrl ? 'Webhook' : 'Retry Admin'),\n    document_type: pick(body.document_type),\n    document_number: pick(body.document_number),\n    title: pick(body.title),\n    year: Number.isInteger(yearNum) && yearNum >= 1800 && yearNum <= 2200 ? yearNum : null,\n  },\n}];\n"
-      },
-      "id": "29785b37-ada6-471b-abb0-259a5c7847e6",
+      "id": "c50ab2c7-7293-44b1-a66c-72c077b2e31a",
       "name": "Normalisasi Input Webhook",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         1024,
         208
-      ]
+      ],
+      "parameters": {
+        "jsCode": "// Input dari webhook: manual ingest ({ pdf_url, title?, ... }) atau Retry dari dashboard admin ({ error_id, ... }).\nconst body = $input.first().json.body ?? {};\nconst pick = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);\nconst pdfUrl = pick(body.pdf_url);\nif (pdfUrl && !/^https:\\/\\/[^\\s]+$/i.test(pdfUrl)) {\n  throw new Error('pdf_url harus berupa URL https.');\n}\nconst yearNum = Number(body.year);\nreturn [{\n  json: {\n    pdf_url: pdfUrl,\n    retry_error_id: pick(body.retry_error_id) ?? pick(body.error_id),\n    source: pick(body.source) ?? (pdfUrl ? 'Webhook' : 'Retry Admin'),\n    document_type: pick(body.document_type),\n    document_number: pick(body.document_number),\n    title: pick(body.title),\n    year: Number.isInteger(yearNum) && yearNum >= 1800 && yearNum <= 2200 ? yearNum : null,\n  },\n}];\n"
+      }
     },
     {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ accepted: true, execution_id: String($execution.id) }) }}",
-        "options": {}
-      },
-      "id": "c20be366-c74b-48d9-8c7d-afe35e88fc39",
+      "id": "d6a370d5-0c57-4f91-aa44-4d595acf2051",
       "name": "Kirim Konfirmasi Diterima",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
         1232,
         208
-      ]
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ accepted: true, execution_id: String($execution.id) }) }}",
+        "options": {}
+      }
     },
     {
+      "id": "119c0758-c02e-4a93-9e85-f03e0ad3fa75",
+      "name": "Ada pdf_url?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1440,
+        208
+      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -372,30 +380,30 @@
           "combinator": "and"
         },
         "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.4,
-      "position": [
-        1440,
-        208
-      ],
-      "id": "de9dda7b-d73c-4eaa-a5cf-0b6edecd4415",
-      "name": "Ada pdf_url?"
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// Menyatukan jalur webhook dan jadwal harian sebelum download PDF.\nlet retryErrorId = null;\ntry {\n  if ($('Normalisasi Input Webhook').isExecuted) {\n    retryErrorId = $('Normalisasi Input Webhook').first().json.retry_error_id ?? null;\n  }\n} catch (e) { /* eksekusi dari jadwal */ }\n\nreturn $input.all().map((item, index) => {\n  let detail = {};\n  try { detail = $('Periksa Link Download').itemMatching(index).json; } catch (e) { /* jalur webhook */ }\n  const j = { ...detail, ...Object.fromEntries(Object.entries(item.json).filter(([, v]) => v !== null && v !== undefined)) };\n  const url = String(j.pdf_url);\n  let fileName = '';\n  // `URL` tidak tersedia di sandbox Code node n8n; ambil nama file dengan string biasa.\n  try { fileName = decodeURIComponent(url.split(/[?#]/)[0].split('/').pop() || ''); } catch (e) { fileName = url.split('/').pop() || ''; }\n  const base = fileName.replace(/\\.pdf$/i, '').replace(/[_+]+/g, ' ').replace(/\\s+/g, ' ').trim();\n  const fromTitle = String(j.title || '').match(/Nomor\\s+(\\d+)\\s+Tahun\\s+(\\d{4})/i);\n  const fromFile = base.match(/((?:19|20)\\d{2})\\s*(?:pkpu|kpt|kep)\\s*0*(\\d+)/i);\n  const yearMatch = fromTitle ? [fromTitle[2]] : (fromFile ? [fromFile[1]] : base.match(/(?:19|20)\\d{2}/));\n  const numberMatch = fromTitle ? [null, fromTitle[1]] : (fromFile ? [null, fromFile[2]] : base.match(/(?:nomor|no\\.?)\\s*(\\d+)/i));\n  return {\n    json: {\n      pdf_url: url,\n      source: j.source ?? 'JDIH KPU',\n      document_type: j.document_type ?? 'PKPU',\n      title: j.title ?? (numberMatch && yearMatch\n        ? `Peraturan KPU Nomor ${numberMatch[1]} Tahun ${yearMatch[0]}`\n        : (base ? base.slice(0, 2000) : null)),\n      document_number: j.document_number ?? (numberMatch ? numberMatch[1] : null),\n      year: j.year ?? (yearMatch ? Number(yearMatch[0]) : null),\n      legal_status: ['berlaku', 'tidak_berlaku'].includes(j.legal_status) ? j.legal_status : 'belum_diverifikasi',\n      retry_error_id: j.retry_error_id ?? retryErrorId,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
-      },
-      "id": "8ed8e34e-b986-4a81-8439-c507bab03865",
+      "id": "aaa96e21-ef6a-45d2-9a47-cf82ebfb4f09",
       "name": "Siapkan Dokumen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         1856,
         400
-      ]
+      ],
+      "parameters": {
+        "jsCode": "// Menyatukan jalur webhook dan jadwal harian sebelum download PDF.\nlet retryErrorId = null;\ntry {\n  if ($('Normalisasi Input Webhook').isExecuted) {\n    retryErrorId = $('Normalisasi Input Webhook').first().json.retry_error_id ?? null;\n  }\n} catch (e) { /* eksekusi dari jadwal */ }\n\nreturn $input.all().map((item, index) => {\n  let detail = {};\n  try { detail = $('Periksa Link Download').itemMatching(index).json; } catch (e) {\n    try { detail = $('Normalisasi Input Webhook').first().json; } catch (e2) { /* tidak ada metadata */ }\n  }\n  const { already_processed, ...rest } = item.json;\n  const j = { ...detail, ...Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== null && v !== undefined)) };\n  const url = String(j.pdf_url);\n  let fileName = '';\n  // `URL` tidak tersedia di sandbox Code node n8n; ambil nama file dengan string biasa.\n  try { fileName = decodeURIComponent(url.split(/[?#]/)[0].split('/').pop() || ''); } catch (e) { fileName = url.split('/').pop() || ''; }\n  const base = fileName.replace(/\\.pdf$/i, '').replace(/[_+]+/g, ' ').replace(/\\s+/g, ' ').trim();\n  const fromTitle = String(j.title || '').match(/Nomor\\s+(\\d+)\\s+Tahun\\s+(\\d{4})/i);\n  const fromFile = base.match(/((?:19|20)\\d{2})\\s*(?:pkpu|kpt|kep)\\s*0*(\\d+)/i);\n  const yearMatch = fromTitle ? [fromTitle[2]] : (fromFile ? [fromFile[1]] : base.match(/(?:19|20)\\d{2}/));\n  const numberMatch = fromTitle ? [null, fromTitle[1]] : (fromFile ? [null, fromFile[2]] : base.match(/(?:nomor|no\\.?)\\s*(\\d+)/i));\n  return {\n    json: {\n      pdf_url: url,\n      source: j.source ?? 'JDIH KPU',\n      document_type: j.document_type ?? 'PKPU',\n      title: j.title ?? (numberMatch && yearMatch\n        ? `Peraturan KPU Nomor ${numberMatch[1]} Tahun ${yearMatch[0]}`\n        : (base ? base.slice(0, 2000) : null)),\n      document_number: j.document_number ?? (numberMatch ? numberMatch[1] : null),\n      year: j.year ?? (yearMatch ? Number(yearMatch[0]) : null),\n      legal_status: ['berlaku', 'tidak_berlaku'].includes(j.legal_status) ? j.legal_status : 'belum_diverifikasi',\n      retry_error_id: j.retry_error_id ?? retryErrorId,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+      }
     },
     {
+      "id": "dfd5ec4f-28ff-401e-b4e6-ae8a4140735f",
+      "name": "Hitung Hash File",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        2364,
+        400
+      ],
       "parameters": {
         "action": "hash",
         "type": "SHA256",
@@ -403,30 +411,33 @@
         "binaryPropertyName": "data",
         "dataPropertyName": "file_hash",
         "encoding": "hex"
-      },
-      "id": "c82c7d7a-a699-4d4d-a48a-def826f20abc",
-      "name": "Hitung Hash File",
-      "type": "n8n-nodes-base.crypto",
-      "typeVersion": 1,
-      "position": [
-        2364,
-        400
-      ]
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// Output Pinecone (mode insert) = satu item per chunk yang berhasil di-upsert.\n// Status sukses hanya dikirim dari sini, yaitu setelah Pinecone menerima upsert.\nconst groups = new Map();\n$input.all().forEach((item, i) => {\n  const meta = item.json.metadata ?? {};\n  let doc = null;\n  let fileHash = null;\n  try { doc = $('Siapkan Dokumen').itemMatching(i).json; } catch (e) {}\n  try { fileHash = $('Hitung Hash File').itemMatching(i).json.file_hash; } catch (e) {}\n  const sourceUrl = meta.source_url || doc?.pdf_url;\n  if (!sourceUrl) {\n    throw new Error('source_url hasil upsert Pinecone tidak diketahui; callback admin dibatalkan.');\n  }\n  if (!groups.has(sourceUrl)) {\n    groups.set(sourceUrl, { doc: doc ?? {}, fileHash: meta.file_hash || fileHash || null, chunks: 0, pasal: new Set() });\n  }\n  const g = groups.get(sourceUrl);\n  g.chunks += 1;\n  for (const m of String(item.json.pageContent ?? '').matchAll(/\\bPasal\\s+(\\d+[A-Z]?)\\b/g)) g.pasal.add(m[1]);\n});\n\nreturn [...groups.entries()].map(([sourceUrl, g]) => ({\n  json: {\n    workflow: 'WF1',\n    execution_id: String($execution.id),\n    status: 'success',\n    source_url: sourceUrl,\n    document_type: g.doc.document_type ?? null,\n    document_number: g.doc.document_number ?? null,\n    title: g.doc.title ?? null,\n    year: g.doc.year ?? null,\n    file_hash: g.fileHash,\n    namespace: 'kpu_jdih',\n    chunks_count: g.chunks,\n    pasal_count: g.pasal.size || null,\n    pinecone_confirmed: true,\n    retry_error_id: g.doc.retry_error_id ?? null,\n  },\n}));\n"
-      },
-      "id": "ea0ff639-beb2-486b-a80e-53d33cd36750",
+      "id": "92918830-e9e9-4694-aa21-5800d81853f7",
       "name": "Rangkum Hasil Upsert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         3402,
         400
-      ]
+      ],
+      "parameters": {
+        "jsCode": "// Output Pinecone (mode insert) = satu item per chunk yang berhasil di-upsert.\n// Status sukses hanya dikirim dari sini, yaitu setelah Pinecone menerima upsert.\nconst groups = new Map();\n$input.all().forEach((item, i) => {\n  const meta = item.json.metadata ?? {};\n  let doc = null;\n  let fileHash = null;\n  try { doc = $('Siapkan Dokumen').itemMatching(i).json; } catch (e) {}\n  try { fileHash = $('Hitung Hash File').itemMatching(i).json.file_hash; } catch (e) {}\n  const sourceUrl = meta.source_url || doc?.pdf_url;\n  if (!sourceUrl) {\n    throw new Error('source_url hasil upsert Pinecone tidak diketahui; callback admin dibatalkan.');\n  }\n  if (!groups.has(sourceUrl)) {\n    groups.set(sourceUrl, { doc: doc ?? {}, fileHash: meta.file_hash || fileHash || null, chunks: 0, pasal: new Set() });\n  }\n  const g = groups.get(sourceUrl);\n  g.chunks += 1;\n  for (const m of String(item.json.pageContent ?? '').matchAll(/\\bPasal\\s+(\\d+[A-Z]?)\\b/g)) g.pasal.add(m[1]);\n});\n\nreturn [...groups.entries()].map(([sourceUrl, g]) => ({\n  json: {\n    workflow: 'WF1',\n    execution_id: String($execution.id),\n    status: 'success',\n    source_url: sourceUrl,\n    document_type: g.doc.document_type ?? null,\n    document_number: g.doc.document_number ?? null,\n    title: g.doc.title ?? null,\n    year: g.doc.year ?? null,\n    file_hash: g.fileHash,\n    namespace: 'kpu_jdih',\n    chunks_count: g.chunks,\n    pasal_count: g.pasal.size || null,\n    pinecone_confirmed: true,\n    retry_error_id: g.doc.retry_error_id ?? null,\n  },\n}));\n"
+      }
     },
     {
+      "id": "16377693-f5f6-42ef-b33f-1b999ff671ed",
+      "name": "Kirim Status Sukses ke Admin",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "position": [
+        3622,
+        400
+      ],
       "parameters": {
         "method": "POST",
         "url": "https://ai-agent-kpu-api.vercel.app/api/v1/admin/ingestion/callback",
@@ -439,19 +450,26 @@
           "timeout": 15000
         }
       },
-      "id": "0c8acbae-a130-41af-ac9b-a83bbea516b8",
-      "name": "Kirim Status Sukses ke Admin",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        3622,
-        400
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TJJ6Tskkna9yMYnf",
+          "name": "KPU Ingestion Callback (Vercel)"
+        }
+      }
     },
     {
+      "id": "720e07ad-1497-4e84-b574-5b52776c2921",
+      "name": "Kirim Status Processing ke Admin",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "position": [
+        2484,
+        620
+      ],
       "parameters": {
         "method": "POST",
         "url": "https://ai-agent-kpu-api.vercel.app/api/v1/admin/ingestion/callback",
@@ -464,23 +482,14 @@
           "timeout": 15000
         }
       },
-      "id": "3969e231-8175-4118-8eb5-ab008a481ee5",
-      "name": "Kirim Status Processing ke Admin",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2484,
-        620
-      ],
-      "onError": "continueRegularOutput",
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 2000
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TJJ6Tskkna9yMYnf",
+          "name": "KPU Ingestion Callback (Vercel)"
+        }
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// Node Crypto (Hitung Hash File) tidak meneruskan file binary.\n// Ambil kembali file PDF dari \"Download PDF\" untuk item yang sama.\nreturn $input.all().map((item, index) => {\n  const source = $('Download PDF').itemMatching(index);\n  if (!source || !source.binary || !source.binary.data) {\n    throw new Error('File PDF hasil download tidak ditemukan untuk ' + (item.json.pdf_url || 'item ' + index));\n  }\n  return { json: item.json, binary: source.binary, pairedItem: { item: index } };\n});\n"
-      },
       "id": "34904819-a616-4dd2-a31a-e0320a42c177",
       "name": "Gabungkan File & Hash",
       "type": "n8n-nodes-base.code",
@@ -488,7 +497,10 @@
       "position": [
         2564,
         400
-      ]
+      ],
+      "parameters": {
+        "jsCode": "// Node Crypto (Hitung Hash File) tidak meneruskan file binary.\n// Ambil kembali file PDF dari \"Download PDF\" untuk item yang sama.\nreturn $input.all().map((item, index) => {\n  const source = $('Download PDF').itemMatching(index);\n  if (!source || !source.binary || !source.binary.data) {\n    throw new Error('File PDF hasil download tidak ditemukan untuk ' + (item.json.pdf_url || 'item ' + index));\n  }\n  return { json: item.json, binary: source.binary, pairedItem: { item: index } };\n});\n"
+      }
     }
   ],
   "pinData": {},
@@ -673,7 +685,7 @@
       "main": [
         [
           {
-            "node": "Siapkan Dokumen",
+            "node": "periksa dokumen yang sudah diproses",
             "type": "main",
             "index": 0
           }

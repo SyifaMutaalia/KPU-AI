@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import AdminShell from '@/components/AdminShell';
 import IngestionControl from '@/components/IngestionControl';
+import { httpErrorMessage } from '@/lib/httpError';
 
 type DocumentRow = {
   id: string; source_url: string; document_type: string | null; document_number: string | null;
@@ -29,7 +30,7 @@ export default function AdminDocuments() {
     try {
       const response = await fetch(`/api/admin/dashboard/documents?${params}`, { cache: 'no-store' });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || result.error || 'Gagal memuat dokumen.');
+      if (!response.ok) throw new Error(httpErrorMessage(response.status, result));
       setData(result);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Gagal memuat dokumen.'); }
     finally { setLoading(false); }

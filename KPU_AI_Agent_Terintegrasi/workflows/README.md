@@ -26,6 +26,12 @@ Error apa pun di WF1 ─► WF2 Error Trigger ─► Kirim Error ke Admin
 
 Index (`kpu-subang-rag`), namespace (`kpu_jdih`), dan text splitter tidak diubah.
 
+**Aturan seleksi dokumen** (node *Periksa Link Download* dan *periksa dokumen yang sudah diproses*):
+
+1. Hanya dokumen dengan status **Berlaku** di halaman detail JDIH. Dokumen *Tidak Berlaku*, *Dicabut*, atau yang statusnya tidak terbaca tidak diproses.
+2. Hanya dokumen terbitan **tahun 2024 sampai 2026** (tahun dibaca dari judul "Nomor … Tahun YYYY", atau dari nama file seperti `2025pkpu001.pdf`).
+3. Dokumen yang `source_url`-nya sudah berstatus `success` di `ingestion.documents` tidak diproses ulang, baik dari jadwal harian, tombol **Pindai JDIH**, maupun webhook dengan `pdf_url`.
+
 **Yang di-embed adalah teks asli hasil ekstraksi PDF**, bukan hasil tulis ulang AI. Node "Normalisasi ke Markdown / JSON" dihapus: menulis ulang seluruh peraturan dengan LLM berisiko memotong atau mengubah isi pasal, sehingga chatbot bisa mengutip teks yang tidak ada di dokumen aslinya.
 
 Setiap chunk di Pinecone membawa metadata yang dibutuhkan chatbot untuk menampilkan sumber dan menerapkan guardrail: `source_url`, `document_id`, `title`, `document_type`, `document_number`, `year`, `legal_status`, `file_hash`. `title` dan `legal_status` dibaca dari halaman detail JDIH. Jika status tidak terbaca, nilainya `belum_diverifikasi` dan jawaban chatbot diberi catatan. Dokumen `tidak_berlaku` tidak pernah dipakai sebagai bukti.
@@ -70,7 +76,7 @@ curl -X POST https://<N8N_HOST>/webhook/kpu-ingest-pdf \
   -d '{"pdf_url": "https://jdih.kpu.go.id/data/data_pkpu/....pdf", "title": "PKPU ..."}'
 ```
 
-- Dengan `pdf_url`: hanya PDF itu yang diproses (tanpa cek duplikat).
+- Dengan `pdf_url`: hanya PDF itu yang diproses. URL yang sudah berstatus `success` di `ingestion.documents` dilewati (tidak diproses ulang).
 - Tanpa `pdf_url` (dipakai tombol **Retry** admin, body berisi `error_id`): menjalankan pemindaian JDIH yang sama seperti jadwal harian; dokumen yang sudah `success` dilewati. Setiap dokumen yang berhasil dikirim dengan `retry_error_id`, sehingga error asal berubah menjadi `retry_succeeded`. Jika eksekusi retry gagal, WF2 menandai error asal `retry_failed`.
 - Webhook segera membalas `{"accepted": true, "execution_id": "..."}`; itu berarti eksekusi diterima, **bukan** ingestion selesai.
 

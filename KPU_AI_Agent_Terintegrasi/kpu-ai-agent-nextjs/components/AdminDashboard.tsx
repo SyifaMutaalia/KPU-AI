@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import AdminShell from '@/components/AdminShell';
+import { httpErrorMessage } from '@/lib/httpError';
 
 type Summary = {
   documents: Record<string, number>;
@@ -37,7 +38,7 @@ export default function AdminDashboard() {
     fetch('/api/admin/dashboard/summary', { cache: 'no-store' })
       .then(async (response) => {
         const result = await response.json();
-        if (!response.ok) throw new Error(result.detail || result.error || 'Gagal memuat ringkasan.');
+        if (!response.ok) throw new Error(httpErrorMessage(response.status, result));
         if (active) setData(result);
       })
       .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : 'Gagal memuat ringkasan.'); })
@@ -45,7 +46,7 @@ export default function AdminDashboard() {
     fetch('/api/admin/dashboard/workflows', { cache: 'no-store' })
       .then(async (response) => {
         const result = await response.json();
-        if (!response.ok) throw new Error(result.detail || result.error || 'Gagal memuat data n8n.');
+        if (!response.ok) throw new Error(httpErrorMessage(response.status, result));
         if (active) setN8n(result);
       })
       .catch((reason: unknown) => { if (active) setN8nError(reason instanceof Error ? reason.message : 'Gagal memuat data n8n.'); });

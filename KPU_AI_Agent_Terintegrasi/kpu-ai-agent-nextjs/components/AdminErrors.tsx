@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import AdminShell from '@/components/AdminShell';
 import { adminCsrfToken } from '@/lib/adminClient';
+import { httpErrorMessage } from '@/lib/httpError';
 
 type ErrorRow = {
   id: string; occurred_at: string; workflow: string; execution_id: string; node: string;
@@ -21,7 +22,7 @@ export default function AdminErrors() {
     try {
       const response = await fetch(`/api/admin/dashboard/errors?page=${page}&page_size=25`, { cache: 'no-store' });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || result.error || 'Gagal memuat error log.');
+      if (!response.ok) throw new Error(httpErrorMessage(response.status, result));
       setData(result);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Gagal memuat error log.'); }
     finally { setLoading(false); }
@@ -37,7 +38,7 @@ export default function AdminErrors() {
         method: 'POST', headers: { 'X-CSRF-Token': csrf },
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || result.error || 'Retry belum dikonfirmasi.');
+      if (!response.ok) throw new Error(httpErrorMessage(response.status, result));
       setNotice(result.message || 'n8n menerima retry; hasil masih menunggu konfirmasi.');
       await load();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Retry gagal.'); }

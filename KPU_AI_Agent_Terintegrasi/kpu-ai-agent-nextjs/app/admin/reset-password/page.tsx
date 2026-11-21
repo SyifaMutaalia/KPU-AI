@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import AdminAuthForms from '@/components/AdminAuthForms';
 
@@ -14,6 +13,6 @@ export default function AdminResetPasswordPage() {
     setChecked(true);
   }, []);
   if (!checked) return <main className="auth-page"><p role="status">Memeriksa tautan reset...</p></main>;
-  if (!token) return <main className="auth-page"><section className="auth-card"><h1>Tautan reset tidak valid</h1><p>Gunakan tautan terbaru dari email, atau minta reset ulang.</p><Link href="/admin/forgot-password">Minta reset ulang</Link></section></main>;
-  return <AdminAuthForms kind="reset" token={token} />;
+  // Tanpa tautan: atur ulang dengan email + kode verifikasi 6 digit dari email.
+  return <AdminAuthForms kind="reset" token={token || undefined} />;
 }
