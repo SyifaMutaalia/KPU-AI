@@ -97,3 +97,16 @@ def test_answer_keeps_both_document_and_web_sources_when_both_cited():
     result = service._finalize("Syarat pemilih adalah WNI berusia 17 tahun [1][2].", evidence, "Apa syarat menjadi pemilih?")
     assert [s.kind for s in result.sources] == ["dokumen", "web"]
     assert "Tidak dipakai" not in [s.title for s in result.sources]
+
+
+def test_tidy_answer_drops_status_berlaku_but_keeps_tidak_berlaku():
+    text = ("Syarat pemilih adalah WNI berusia 17 tahun [1].\n"
+            "Status hukum sumber peraturan: berlaku. [1][2]\n"
+            "Ketentuan ada di PKPU 1/2025 Pasal 4; status hukum keduanya berlaku.\n"
+            "PKPU lama berstatus hukum tidak berlaku.")
+    tidy = service._tidy_answer(text)
+    assert "Status hukum sumber" not in tidy
+    assert "keduanya berlaku" not in tidy
+    assert "Pasal 4." in tidy
+    assert "tidak berlaku" in tidy
+    assert tidy.startswith("Syarat pemilih adalah WNI berusia 17 tahun [1].")
