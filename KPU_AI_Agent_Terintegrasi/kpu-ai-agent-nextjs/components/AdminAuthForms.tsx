@@ -9,7 +9,7 @@ import PasswordInput from '@/components/PasswordInput';
 import { httpErrorMessage } from '@/lib/httpError';
 
 type FormKind = 'login' | 'forgot' | 'reset' | 'change';
-type Props = { kind: FormKind; token?: string };
+type Props = { kind: FormKind; token?: string; initialEmail?: string; initialNotice?: string };
 
 async function getCsrf() {
   const response = await fetch('/api/admin/auth/csrf', { cache: 'no-store' });
@@ -19,14 +19,14 @@ async function getCsrf() {
   return data.csrf_token as string;
 }
 
-export default function AdminAuthForms({ kind, token }: Props) {
+export default function AdminAuthForms({ kind, token, initialEmail = '', initialNotice = '' }: Props) {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [code, setCode] = useState('');
   const useCode = kind === 'reset' && !token;
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState(initialNotice);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -83,6 +83,12 @@ export default function AdminAuthForms({ kind, token }: Props) {
         router.replace('/admin/dashboard');
         return;
       }
+      if (kind === 'forgot') {
+        // Langsung ke halaman isi kode; email dibawa lewat sessionStorage (tidak ditaruh di URL).
+        try { sessionStorage.setItem('admin-reset-email', email); } catch { /* abaikan */ }
+        router.push('/admin/reset-password?kode=terkirim');
+        return;
+      }
       setNotice(result.message || 'Permintaan diterima.');
       setPassword('');
     } catch (reason) {
@@ -124,7 +130,8 @@ export default function AdminAuthForms({ kind, token }: Props) {
         {kind === 'login' && <GoogleLoginButton getCsrf={getCsrf} onLoggedIn={onGoogleLoggedIn} onError={onGoogleError} />}
         <div className="auth-links">
           {kind === 'login' && <Link href="/admin/forgot-password">Lupa kata sandi?</Link>}
-          {kind === 'forgot' && <Link href="/admin/reset-password">Sudah punya kode verifikasi?</Link>}
+          {kind === 'forgot' && <Link href="/admin/reset-password">Sudah menerima kode? Masukkan di sini</Link>}
+          {kind === 'reset' && !token && <Link href="/admin/forgot-password">Belum menerima kode? Kirim ulang</Link>}
           {(kind === 'forgot' || kind === 'reset') && <Link href="/admin/login">Kembali ke login</Link>}
         </div>
         <small className="auth-foot">Akses terbatas untuk administrator. Tidak tersedia registrasi publik.</small>
