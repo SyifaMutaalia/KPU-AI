@@ -498,14 +498,16 @@ def _answer_core(message: str, history: list[tuple[str, str]]) -> AgentResult:
     # Always synthesize the final answer from the recorded snippets, not merely
     # trust a citation marker chosen by the tool-calling agent.
     if evidence.review_refs or evidence.sources:
-        try:
-            repaired = _repair_from_evidence(message, evidence, llm, history)
-            if repaired.strip() == ABSTAIN:
-                return AgentResult(answer=ABSTAIN, sources=[], grounded=False)
-            logger.info("Grounded synthesis citation valid=%s", _citations(repaired, evidence)[2])
-            if _citations(repaired, evidence)[2]:
-                return _finalize(repaired, evidence, message)
-        except Exception as exc:
-            logger.warning("Grounded answer synthesis failed: %s", type(exc).__name__)
+        # Sintesis kadang (jarang) gagal menulis sitasi walau bukti ada: coba sekali lagi
+        # sebelum menyerah, agar pertanyaan yang sebenarnya terjawab tidak berakhir "belum dapat memastikan".
+        for attempt in range(2):
+            try:
+                repaired = _repair_from_evidence(message, evidence, llm, history)
+                valid = _citations(repaired, evidence)[2]
+                logger.info("Grounded synthesis attempt=%s citation valid=%s", attempt + 1, valid)
+                if valid:
+                    return _finalize(repaired, evidence, message)
+            except Exception as exc:
+                logger.warning("Grounded answer synthesis failed: %s", type(exc).__name__)
 
     return AgentResult(answer=ABSTAIN, sources=[], grounded=False)
