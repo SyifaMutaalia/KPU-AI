@@ -9,6 +9,8 @@ import { httpErrorMessage } from '@/lib/httpError';
 
 type Props = { children: ReactNode };
 
+const SEEN_KEY = 'kpu-admin-errors-seen';
+
 export default function AdminShell({ children }: Props) {
   const pathname = usePathname();
   const router = useRouter();
@@ -18,6 +20,22 @@ export default function AdminShell({ children }: Props) {
   const [error, setError] = useState('');
   const [n8nStatus, setN8nStatus] = useState('Memeriksa n8n...');
   const [openErrors, setOpenErrors] = useState(0);
+  const [latestErrorAt, setLatestErrorAt] = useState<string | null>(null);
+  const [seenErrorAt, setSeenErrorAt] = useState<string | null>(null);
+
+  // Alert error cukup dilihat sekali: setelah Error log dibuka atau alert ditutup, alert baru muncul lagi
+  // hanya jika ada error yang lebih baru. Penanda disimpan di perangkat admin.
+  useEffect(() => {
+    try { setSeenErrorAt(localStorage.getItem(SEEN_KEY)); } catch { /* penyimpanan diblokir */ }
+  }, []);
+  function markErrorsSeen(at: string | null) {
+    if (!at) return;
+    setSeenErrorAt(at);
+    try { localStorage.setItem(SEEN_KEY, at); } catch { /* abaikan */ }
+  }
+  useEffect(() => { if (pathname.includes('/errors')) markErrorsSeen(latestErrorAt); }, [pathname, latestErrorAt]);
+  const hasUnseenErrors = openErrors > 0 && !!latestErrorAt && !pathname.includes('/errors')
+    && (!seenErrorAt || new Date(latestErrorAt).getTime() > new Date(seenErrorAt).getTime());
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Tutup sidebar mobile setiap pindah halaman.
@@ -31,7 +49,7 @@ export default function AdminShell({ children }: Props) {
         const response = await fetch('/api/admin/dashboard/summary', { cache: 'no-store' });
         if (!response.ok) return;
         const summary = await response.json();
-        if (active) setOpenErrors(Number(summary.open_errors) || 0);
+        if (active) { setOpenErrors(Number(summary.open_errors) || 0); setLatestErrorAt(summary.latest_error_at ?? null); }
       } catch { /* alert berikutnya dicoba pada interval berikut */ }
     }
     void poll();
@@ -133,7 +151,7 @@ export default function AdminShell({ children }: Props) {
           <div className="admin-n8n-status" role="status">{n8nStatus}</div>
           <ThemeToggle />
         </div>
-        {openErrors > 0 && <div className="admin-alert" role="alert"><b>⚠ {openErrors} error ingestion belum ditangani.</b><span>Workflow n8n melaporkan kegagalan. Periksa detail dan jalankan Retry bila perlu.</span><Link href="/admin/dashboard/errors">Lihat error log</Link></div>}
+        {hasUnseenErrors && <div className="admin-alert" role="alert"><b>⚠ {openErrors} error ingestion belum ditangani.</b><span>Workflow n8n melaporkan kegagalan. Periksa detail dan jalankan Retry bila perlu.</span><Link href="/admin/dashboard/errors">Lihat error log</Link><button type="button" className="alert-close" aria-label="Tutup peringatan" title="Tutup" onClick={() => markErrorsSeen(latestErrorAt)}>×</button></div>}
         {error && <div className="error-box" role="alert">{error}</div>}
         {children}
       </main>

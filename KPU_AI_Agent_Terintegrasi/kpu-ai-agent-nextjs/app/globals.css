@@ -149,3 +149,7 @@ body{background:radial-gradient(1200px 500px at 85% -10%,var(--glow) 0%,transpar
   .admin-table .hash-cell{font-size:10px}
   .error-details{max-width:100%}
 }
+
+.admin-alert{position:relative;padding-right:40px}
+.alert-close{position:absolute;top:8px;right:10px;border:0;background:transparent;color:inherit;font-size:20px;line-height:1;padding:4px 6px;border-radius:6px}
+.alert-close:hover{background:var(--danger-border)}
