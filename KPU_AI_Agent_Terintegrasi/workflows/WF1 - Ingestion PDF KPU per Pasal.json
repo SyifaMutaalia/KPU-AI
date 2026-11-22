@@ -50,6 +50,7 @@
       "name": "Extract PDF",
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
+      "onError": "continueRegularOutput",
       "position": [
         2842,
         400
@@ -659,7 +660,7 @@
         400
       ],
       "parameters": {
-        "jsCode": "\n// PDF hasil scan tidak punya lapisan teks: tandai agar ditranskripsi LLM.\nreturn $input.all().map((item, i) => {\n  const text = String(item.json.text || '');\n  const pages = Number(item.json.numpages) || 1;\n  // Watermark \"jdih.kpu.go.id/jabar/subang\" bukan isi dokumen.\n  const needs_llm = text.replace(/jdih\\.kpu\\.go\\.id\\/\\S*/g, '').replace(/\\s+/g, '').length < 150 * pages;\n  const binary = $('Gabungkan File & Hash').itemMatching(i).binary;\n  return { json: { text, numpages: pages, needs_llm }, binary, pairedItem: { item: i } };\n});\n"
+        "jsCode": "\n// PDF hasil scan tidak punya lapisan teks: tandai agar ditranskripsi LLM.\nreturn $input.all().map((item, i) => {\n  // Bila Extract PDF gagal membaca struktur PDF, item berisi error: perlakukan seperti PDF scan (dibaca LLM).\n  const text = item.json.error ? '' : String(item.json.text || '');\n  const pages = Number(item.json.numpages) || 1;\n  // Watermark \"jdih.kpu.go.id/jabar/subang\" bukan isi dokumen.\n  const needs_llm = text.replace(/jdih\\.kpu\\.go\\.id\\/\\S*/g, '').replace(/\\s+/g, '').length < 150 * pages;\n  const binary = $('Gabungkan File & Hash').itemMatching(i).binary;\n  return { json: { text, numpages: pages, needs_llm }, binary, pairedItem: { item: i } };\n});\n"
       }
     },
     {
