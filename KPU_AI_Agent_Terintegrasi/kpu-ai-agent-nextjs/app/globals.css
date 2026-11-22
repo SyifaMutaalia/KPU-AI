@@ -104,3 +104,4 @@ body{background:radial-gradient(1200px 500px at 85% -10%,#e3efe8 0%,transparent 
 .service-link:hover{background:var(--surface);color:var(--green)}
 .service-link span{color:var(--muted);font-size:11px}
 .source-kind.service{color:#8a5a00;background:#fbf1dc;border-radius:6px;padding:1px 6px;align-self:flex-start}
+.ingestion-url{flex-wrap:wrap}.ingestion-url input{min-width:220px}

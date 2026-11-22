@@ -55,7 +55,8 @@ _ELECTION_TERMS = re.compile(
     r"hitung cepat|quick count|sirekap|silon|sipol|pantarlih|coklit|ad ?hoc|"
     r"relawan demokrasi|pemilih pemula|sengketa pemilu|pelanggaran pemilu|"
     r"politik uang|netralitas asn|dana kampanye|alat peraga kampanye|debat kandidat|"
-    r"masa tenang|"
+    r"masa tenang|e-?voting|evoting|pemungutan suara (?:digital|elektronik)|pilkades digital|"
+    r"pemilihan (?:digital|elektronik)|e-?counting|e-?rekap(?:itulasi)?|"
     r"undang-undang|perbawaslu)\b",
     re.IGNORECASE,
 )

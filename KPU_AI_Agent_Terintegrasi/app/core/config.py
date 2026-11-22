@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     pinecone_namespace: str = "kpu_jdih"
     rag_top_k: int = Field(default=5, ge=1, le=10)
     rag_min_score: float = Field(default=0.55, ge=0.0, le=1.0)
-    rag_allowed_hosts: list[str] = ["kab-subang.kpu.go.id", "jdih.kpu.go.id", "www.kpu.go.id", "peraturan.bpk.go.id", "peraturan.go.id"]
+    rag_allowed_hosts: list[str] = ["kab-subang.kpu.go.id", "jdih.kpu.go.id", "www.kpu.go.id", "peraturan.bpk.go.id", "peraturan.go.id", "jdih.subang.go.id"]
     kpu_website_url: str = "https://kab-subang.kpu.go.id/"
     jdih_url: str = "https://jdih.kpu.go.id/"
     eppid_url: str = "https://subangkabppid.kpu.go.id/"

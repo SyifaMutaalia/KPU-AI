@@ -77,3 +77,10 @@ def test_follow_up_with_year_in_history_is_not_asked_again():
     history = [("user", "Siapa ketua KPPS TPS 05 Desa Pagaden?"), ("assistant", "tahun berapa?"),
                ("user", "Pilkada 2024")]
     assert service._year_in_recent_history(history)
+
+
+def test_e_voting_is_election_topic_and_points_to_subang_jdih():
+    assert service._ELECTION_TERMS.search("bagaimana cara pemungutan suara digital pilkades?")
+    assert service._ELECTION_TERMS.search("apa itu e-voting")
+    urls = [s.url for s in match_services("bagaimana cara e-voting pilkades subang")]
+    assert "https://jdih.subang.go.id/" in urls
