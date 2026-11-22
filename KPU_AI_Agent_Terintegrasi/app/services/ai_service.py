@@ -292,6 +292,8 @@ def _repair_from_evidence(
         "HANYA berdasarkan bukti di bawah. Kalimat pertama langsung menjawab pertanyaan; rincian sebagai poin "
         "pendek atau langkah bernomor; jelaskan istilah teknis; bila relevan akhiri dengan langkah praktis. "
         "Utamakan sumber berlabel dokumen peraturan bila isinya relevan, sumber web sebagai pelengkap. "
+        "Pilih hanya sumber yang isinya benar-benar menjawab pertanyaan; abaikan sumber yang tidak relevan. "
+        "Bila sebuah klaim didukung dokumen dan juga situs resmi, cantumkan keduanya, misalnya [1][2]. "
         "Sebutkan keterbatasan bukti paling banyak satu kalimat pendek dan hanya bila memang perlu. "
         "Setiap klaim faktual harus didukung langsung oleh kutipan sumber yang disitasi. "
         "Jangan gunakan sumber hanya karena muncul di hasil pencarian. "

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import ThemeToggle from '@/components/ThemeToggle';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 import KpuLogo from '@/components/KpuLogo';
@@ -116,6 +117,7 @@ export default function AdminShell({ children }: Props) {
         <div className="admin-topline">
           <button className="menu-toggle" aria-label="Buka menu" aria-expanded={menuOpen} aria-controls="admin-sidebar" onClick={() => setMenuOpen(true)}><span /><span /><span /></button>
           <div className="admin-n8n-status" role="status">{n8nStatus}</div>
+          <ThemeToggle />
         </div>
         {openErrors > 0 && <div className="admin-alert" role="alert"><b>⚠ {openErrors} error ingestion belum ditangani.</b><span>Workflow n8n melaporkan kegagalan. Periksa detail dan jalankan Retry bila perlu.</span><Link href="/admin/dashboard/errors">Lihat error log</Link></div>}
         {error && <div className="error-box" role="alert">{error}</div>}

@@ -84,3 +84,16 @@ def test_e_voting_is_election_topic_and_points_to_subang_jdih():
     assert service._ELECTION_TERMS.search("apa itu e-voting")
     urls = [s.url for s in match_services("bagaimana cara e-voting pilkades subang")]
     assert "https://jdih.subang.go.id/" in urls
+
+
+def test_answer_keeps_both_document_and_web_sources_when_both_cited():
+    from app.schemas.chat import Source
+    evidence = Evidence()
+    evidence.sources = [
+        Source(title="PKPU 1/2025", url="https://jdih.kpu.go.id/data/data_pkpu/2025pkpu001.pdf", kind="dokumen"),
+        Source(title="Berita KPU", url="https://www.kpu.go.id/berita/baca/1", kind="web"),
+        Source(title="Tidak dipakai", url="https://www.kpu.go.id/berita/baca/2", kind="web"),
+    ]
+    result = service._finalize("Syarat pemilih adalah WNI berusia 17 tahun [1][2].", evidence, "Apa syarat menjadi pemilih?")
+    assert [s.kind for s in result.sources] == ["dokumen", "web"]
+    assert "Tidak dipakai" not in [s.title for s in result.sources]
