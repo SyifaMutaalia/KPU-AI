@@ -96,6 +96,20 @@ export default function AdminShell({ children }: Props) {
     }
   }
 
+  // Di HP tabel admin tampil sebagai kartu: setiap sel diberi label dari judul kolomnya.
+  useEffect(() => {
+    const label = () => document.querySelectorAll<HTMLTableElement>('.admin-table').forEach((table) => {
+      const heads = Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent?.trim() ?? '');
+      table.querySelectorAll('tbody tr').forEach((row) => Array.from(row.children).forEach((cell, index) => {
+        if (heads[index] && cell.getAttribute('data-label') !== heads[index]) cell.setAttribute('data-label', heads[index]);
+      }));
+    });
+    label();
+    const observer = new MutationObserver(label);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
   if (loading) return <main className="admin-loading" role="status">Memeriksa sesi admin...</main>;
   if (error && !email) return <main className="admin-loading"><p role="alert">{error}</p><Link href="/admin/login">Kembali ke login</Link></main>;
 
