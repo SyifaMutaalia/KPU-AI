@@ -452,3 +452,52 @@ def test_reset_password_with_email_verification_code(client, monkeypatch):
         headers=headers,
     )
     assert again.status_code == 400
+
+
+def _google_login(client, credential="header.payload.signature-google"):
+    csrf = client.get("/api/v1/admin/auth/csrf").json()["csrf_token"]
+    return client.post(
+        "/api/v1/admin/auth/google",
+        json={"credential": credential},
+        headers={"X-CSRF-Token": csrf},
+    )
+
+
+def test_google_login_disabled_without_client_id(client):
+    assert client.get("/api/v1/admin/auth/google/config").json() == {"enabled": False, "client_id": ""}
+    assert _google_login(client).status_code == 503
+
+
+def test_google_login_only_for_registered_admin(client, monkeypatch):
+    from app.api.routes import admin as admin_routes
+    from app.core.config import get_settings
+
+    create_admin(email="admin@example.org", must_change=False)
+    monkeypatch.setattr(get_settings(), "google_client_id", "client-123.apps.googleusercontent.com")
+    assert client.get("/api/v1/admin/auth/google/config").json()["enabled"] is True
+
+    monkeypatch.setattr(admin_routes, "_verify_google_credential", lambda credential, client_id: "orang.lain@gmail.com")
+    assert _google_login(client).status_code == 403
+
+    monkeypatch.setattr(admin_routes, "_verify_google_credential", lambda credential, client_id: "admin@example.org")
+    response = _google_login(client)
+    assert response.status_code == 200
+    assert response.json()["user"]["email"] == "admin@example.org"
+    assert client.get("/api/v1/admin/auth/me").status_code == 200
+
+
+def test_google_credential_checks_audience(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+    from app.api.routes import admin as admin_routes
+
+    class Reply:
+        status_code = 200
+        def json(self):
+            return {"aud": "aplikasi-lain", "iss": "accounts.google.com", "email_verified": "true",
+                    "exp": "9999999999", "email": "admin@example.org"}
+
+    monkeypatch.setattr(admin_routes.httpx, "get", lambda *a, **k: Reply())
+    with pytest.raises(HTTPException) as err:
+        admin_routes._verify_google_credential("x" * 30, "client-123")
+    assert err.value.status_code == 401

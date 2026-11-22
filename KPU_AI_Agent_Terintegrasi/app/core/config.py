@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     admin_retry_webhook_url: str = ""
     admin_retry_webhook_secret: str = ""
     ingestion_callback_secret: str = ""
+    # Login Google untuk admin (Google Identity Services). Client ID bersifat publik; kosong = nonaktif.
+    google_client_id: str = ""
     smtp_host: str = ""
     smtp_port: int = Field(default=587, ge=1, le=65535)
     smtp_username: str = ""

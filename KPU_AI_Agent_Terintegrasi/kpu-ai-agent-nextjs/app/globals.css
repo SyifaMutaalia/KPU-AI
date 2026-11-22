@@ -153,3 +153,7 @@ body{background:radial-gradient(1200px 500px at 85% -10%,var(--glow) 0%,transpar
 .admin-alert{position:relative;padding-right:40px}
 .alert-close{position:absolute;top:8px;right:10px;border:0;background:transparent;color:inherit;font-size:20px;line-height:1;padding:4px 6px;border-radius:6px}
 .alert-close:hover{background:var(--danger-border)}
+
+.google-login{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:16px}
+.google-divider{display:flex;align-items:center;gap:10px;width:100%;color:var(--muted);font-size:11px}
+.google-divider::before,.google-divider::after{content:'';flex:1;border-top:1px solid var(--border)}

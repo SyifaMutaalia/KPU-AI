@@ -48,6 +48,8 @@ from app.schemas.admin import (
     AdminDocumentsOut,
     AdminErrorOut,
     AdminErrorsOut,
+    AdminGoogleConfigOut,
+    AdminGoogleLoginIn,
     AdminLoginIn,
     AdminLoginOut,
     AdminMessageOut,
@@ -189,6 +191,12 @@ def login(
             status_code=401, detail="Email atau kata sandi tidak valid."
         )
 
+    return _start_admin_session(db, user, response, "admin.login")
+
+
+def _start_admin_session(db: Session, user: AdminUser, response: Response, action: str) -> AdminLoginOut:
+    """Buat sesi admin (cookie HttpOnly + token CSRF) setelah identitas admin terbukti."""
+    settings = get_settings()
     raw_session = secrets.token_urlsafe(32)
     csrf = secrets.token_urlsafe(32)
     expires_at, max_age = session_expiration()
@@ -204,7 +212,7 @@ def login(
             expires_at=expires_at,
         )
     )
-    _audit(db, user.id, "admin.login", "admin_user", user.id)
+    _audit(db, user.id, action, "admin_user", user.id)
     db.commit()
     set_admin_cookie(response, raw_session, max_age)
     response.delete_cookie(
@@ -218,6 +226,60 @@ def login(
             must_change_password=user.must_change_password,
         ),
     )
+
+
+GOOGLE_ISSUERS = {"accounts.google.com", "https://accounts.google.com"}
+
+
+def _verify_google_credential(credential: str, client_id: str) -> str:
+    """Periksa ID token Google lewat endpoint tokeninfo; kembalikan email yang sudah diverifikasi Google."""
+    try:
+        reply = httpx.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": credential},
+            timeout=10,
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail="Google tidak dapat dihubungi. Coba lagi.") from exc
+    if reply.status_code != 200:
+        raise HTTPException(status_code=401, detail="Login Google tidak valid atau sudah kedaluwarsa.")
+    info = reply.json()
+    if (
+        info.get("aud") != client_id
+        or info.get("iss") not in GOOGLE_ISSUERS
+        or str(info.get("email_verified")).lower() != "true"
+        or int(info.get("exp") or 0) < int(utcnow().timestamp())
+        or not info.get("email")
+    ):
+        raise HTTPException(status_code=401, detail="Login Google tidak valid atau sudah kedaluwarsa.")
+    return str(info["email"]).strip().lower()
+
+
+@router.get("/auth/google/config", response_model=AdminGoogleConfigOut)
+def google_login_config():
+    client_id = get_settings().google_client_id.strip()
+    return AdminGoogleConfigOut(enabled=bool(client_id), client_id=client_id)
+
+
+@router.post("/auth/google", response_model=AdminLoginOut)
+def google_login(
+    payload: AdminGoogleLoginIn,
+    request: Request,
+    response: Response,
+    _csrf: None = Depends(require_guest_csrf),
+    db: Session = Depends(get_db),
+):
+    """Masuk dengan Google. Tidak ada pendaftaran: email Google harus sama dengan akun admin yang aktif."""
+    settings = get_settings()
+    client_id = settings.google_client_id.strip()
+    if not client_id:
+        raise HTTPException(status_code=503, detail="Login Google belum dikonfigurasi.")
+    consume_rate_limit(db, "login", request_client_key(request), settings.admin_login_rate_limit)
+    email = _verify_google_credential(payload.credential, client_id)
+    user = db.scalar(select(AdminUser).where(AdminUser.email == email))
+    if not user or not user.is_active:
+        raise HTTPException(status_code=403, detail="Akun Google ini tidak terdaftar sebagai admin.")
+    return _start_admin_session(db, user, response, "admin.login_google")
 
 
 @router.get("/auth/me", response_model=AdminUserOut)

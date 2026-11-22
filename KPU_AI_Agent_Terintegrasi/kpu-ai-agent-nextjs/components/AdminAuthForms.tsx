@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import KpuLogo from '@/components/KpuLogo';
+import GoogleLoginButton from '@/components/GoogleLoginButton';
 import { httpErrorMessage } from '@/lib/httpError';
 
 type FormKind = 'login' | 'forgot' | 'reset' | 'change';
@@ -40,6 +41,12 @@ export default function AdminAuthForms({ kind, token }: Props) {
     reset: token ? 'Tautan reset hanya dapat digunakan sekali dan memiliki masa berlaku.' : 'Masukkan email admin dan kode verifikasi 6 digit dari email (berlaku 15 menit).',
     change: 'Penggantian kata sandi wajib dilakukan sebelum mengakses dashboard.',
   };
+
+  const onGoogleLoggedIn = useCallback((result: { csrf_token: string; user: { must_change_password: boolean } }) => {
+    sessionStorage.setItem('admin-csrf-token', result.csrf_token);
+    router.replace(result.user.must_change_password ? '/admin/change-password' : '/admin/dashboard');
+  }, [router]);
+  const onGoogleError = useCallback((message: string) => setError(message), []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -114,6 +121,7 @@ export default function AdminAuthForms({ kind, token }: Props) {
           ) : null}
           <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Memproses...' : titles[kind]}</button>
         </form>
+        {kind === 'login' && <GoogleLoginButton getCsrf={getCsrf} onLoggedIn={onGoogleLoggedIn} onError={onGoogleError} />}
         <div className="auth-links">
           {kind === 'login' && <Link href="/admin/forgot-password">Lupa kata sandi?</Link>}
           {kind === 'forgot' && <Link href="/admin/reset-password">Sudah punya kode verifikasi?</Link>}

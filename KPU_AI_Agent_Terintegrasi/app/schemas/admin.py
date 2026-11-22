@@ -4,6 +4,18 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+class AdminGoogleLoginIn(BaseModel):
+    """ID token (JWT) dari tombol "Masuk dengan Google"."""
+
+    model_config = ConfigDict(extra="forbid")
+    credential: str = Field(min_length=20, max_length=4096)
+
+
+class AdminGoogleConfigOut(BaseModel):
+    enabled: bool
+    client_id: str
+
+
 class AdminLoginIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     email: str = Field(min_length=3, max_length=320)
