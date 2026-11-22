@@ -275,7 +275,7 @@ def _repair_from_evidence(
         if snippets:
             sections.append(
                 f"[{idx}] SUMBER RESMI: {source.title} ({source.url})\n"
-                + "\n".join(str(snippet)[:2200] for snippet in snippets[:3])
+                + "\n".join(str(snippet)[:2200] for snippet in snippets[:6])
             )
     if evidence.sources:
         sections.append("SUMBER WEB RESMI YANG DIDAPAT TOOL:\n" + "\n".join(
@@ -287,6 +287,14 @@ def _repair_from_evidence(
     if not sections:
         return ""
 
+    # Format sitasi harus persis sama dengan label bukti: [D1] hanya ada bila ada dokumen internal.
+    citation_rule = (
+        "Wajib sertakan sitasi ID tepat sesuai label bukti: [D1], [D2] untuk dokumen internal dan "
+        "[1], [2] untuk sumber bernomor. "
+        if evidence.review_refs else
+        "Wajib sertakan sitasi dengan nomor sumber persis seperti label bukti, yaitu [1], [2], dan seterusnya, "
+        "baik untuk dokumen PDF maupun situs resmi. JANGAN memakai format [D1] atau label lain. "
+    )
     instruction = (
         "Jawab pertanyaan berikut dalam bahasa Indonesia sederhana yang mudah dipahami warga awam, "
         "HANYA berdasarkan bukti di bawah. Kalimat pertama langsung menjawab pertanyaan; rincian sebagai poin "
@@ -297,8 +305,8 @@ def _repair_from_evidence(
         "Sebutkan keterbatasan bukti paling banyak satu kalimat pendek dan hanya bila memang perlu. "
         "Setiap klaim faktual harus didukung langsung oleh kutipan sumber yang disitasi. "
         "Jangan gunakan sumber hanya karena muncul di hasil pencarian. "
-        "Wajib sertakan sitasi ID tepat, misalnya [D1] untuk dokumen internal "
-        "atau [1] untuk sumber web. Tidak boleh mencipta ID atau URL. "
+        + citation_rule +
+        "Tidak boleh mencipta ID atau URL. "
         "Gunakan halaman dan diktum jika ada. "
         "Format: tulis **frasa** hanya untuk 1-3 hal terpenting (tampil sebagai huruf tebal) dan "
         "*istilah* untuk istilah asing (tampil miring); jangan memakai simbol bintang untuk hal lain, "
@@ -469,7 +477,9 @@ def _answer_core(message: str, history: list[tuple[str, str]]) -> AgentResult:
     # questions, require evidence even if the agent forgot to use a tool.
     # Untuk keputusan yang diminta secara spesifik, cari berdasarkan pertanyaan
     # asli meskipun agent sebelumnya memilih web atau menulis query yang terlalu umum.
-    if not evidence.retrieved or _asks_for_decision_text(message):
+    # Selalu cari juga dengan kalimat asli pengguna: kueri susunan agent kadang terlalu panjang
+    # sehingga potongan yang paling tepat (mis. tabel lampiran) tidak ikut terambil.
+    if message not in getattr(evidence, "doc_queries", []) or _asks_for_decision_text(message):
         tools[0].invoke({"query": message})
     if _is_current_question(message) and not evidence.web_searched:
         tools[1].invoke({"query": message})

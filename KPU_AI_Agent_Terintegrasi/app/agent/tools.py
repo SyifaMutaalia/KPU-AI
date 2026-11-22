@@ -26,6 +26,7 @@ class Evidence:
     retrieved: bool = False
     web_searched: bool = False
     web_queries: list[str] = field(default_factory=list)
+    doc_queries: list[str] = field(default_factory=list)
     used_draft_tool: bool = False
     used_channels_tool: bool = False
 
@@ -47,6 +48,7 @@ def build_tools(evidence: Evidence):
     def search_kpu_documents(query: str) -> str:
         """Cari potongan dokumen kepemiluan di Pinecone; kembalikan halaman dan status hukum."""
         evidence.retrieved = True
+        evidence.doc_queries.append(query)
         try:
             excerpts, _ = search_official_documents(query)
         except Exception as exc:
@@ -66,7 +68,7 @@ def build_tools(evidence: Evidence):
                     note="Status keberlakuan belum diverifikasi" if unverified else None,
                 )
                 excerpt["id"] = idx
-                evidence.source_evidence.setdefault(idx, []).append(
+                snippet = (
                     "\n".join(
                         part
                         for part in (
@@ -79,6 +81,9 @@ def build_tools(evidence: Evidence):
                         if part.strip()
                     )[:3500]
                 )
+                bucket = evidence.source_evidence.setdefault(idx, [])
+                if snippet not in bucket:  # potongan yang sama dari kueri lain tidak diulang
+                    bucket.append(snippet)
             else:
                 # Nomor D1, D2... menunjukkan dokumen INTERNAL, bukan tautan resmi.
                 key = (
