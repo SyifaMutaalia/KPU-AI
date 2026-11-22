@@ -24,7 +24,12 @@ Masyarakat kesulitan menemukan jawaban pasti tentang aturan pemilu (syarat pemil
 
 ## 2. Solusi
 
-1. **Chat publik tanpa login.** Warga bertanya dengan bahasa sehari-hari ("cara pindah tps", "syarat jadi pemilih apa aja?"). Agent mencari Pasal yang relevan di Pinecone, lalu menjawab dengan sitasi `[1]`, `[2]` dan tautan ke PDF resmi JDIH.
+1. **Chat publik tanpa login.** Warga bertanya dengan bahasa sehari-hari ("cara pindah tps", "syarat jadi pemilih apa aja?"). Agent mencari Pasal yang relevan di Pinecone dan situs resmi, lalu menjawab dengan sitasi `[1]`, `[2]` dan tautan ke sumbernya.
+   - Hanya sumber yang benar-benar disitasi yang ditampilkan; dokumen PDF dan situs resmi dicantumkan bersama bila keduanya mendukung.
+   - Sumber web dibatasi ke situs pemerintah: KPU RI, JDIH KPU, KPU Kabupaten Subang, Pemkab Subang, Pemprov Jawa Barat (mis. Pilkades digital/e-voting), JDIH BPK dan Kemendagri.
+   - Pertanyaan data per penyelenggaraan tanpa tahun (mis. "siapa ketua KPPS TPS 05?") dijawab dengan pertanyaan klarifikasi; data pemilihan yang belum terjadi dijawab "belum ada".
+   - Menu dan tautan **layanan resmi KPU**: Cek DPT Online, Info Pemilu (profil calon/partai), hasil Pemilu dan Pilkada 2024, JDIH, PPID, e-PPID KPU Subang, serta portal Pemkab Subang.
+   - Jawaban tampil rapi: huruf **tebal**/*miring* tanpa simbol bintang, daftar bernomor, dan tautan sitasi.
 2. **Guardrail anti-halusinasi.**
    - Jawaban faktual wajib bersitasi dari sumber yang benar-benar ditemukan tool. Kalau tidak ada sitasi yang valid, agent menjawab "belum dapat memastikan".
    - Hanya dokumen berstatus berlaku (atau belum diverifikasi, dengan catatan) yang dipakai; dokumen dicabut dikecualikan.
@@ -38,7 +43,10 @@ Masyarakat kesulitan menemukan jawaban pasti tentang aturan pemilu (syarat pemil
    - Status per dokumen (processing / success / failed) beserta konfirmasi Pinecone.
    - Daftar workflow dan eksekusi n8n.
    - Error log dengan alert.
-   - Tombol **Pindai JDIH sekarang** dan **Ingest PDF ini**.
+   - Tombol **Pindai JDIH sekarang** dan **Ingest PDF ini** (dengan judul opsional).
+   - Alert error yang hilang setelah dicek dan muncul lagi hanya bila ada error baru.
+   - Lupa kata sandi: kode verifikasi 6 digit dan tautan reset dikirim ke email admin (butuh konfigurasi SMTP).
+6. **Tampilan.** Warna mengikuti logo KPU (merah-emas), tema terang/gelap, responsif di HP dengan tombol sidebar, sidebar tidak ikut bergulir, kolom ketik selalu terlihat, dan pesan error menyertakan kode HTTP.
 
 ## 3. Arsitektur
 
@@ -74,10 +82,11 @@ flowchart LR
 ### Alur ingestion (n8n WF1)
 
 ```
-Jadwal 06.00 / tombol admin ─► halaman JDIH ─► halaman detail (judul + status Berlaku)
-  ─► sudah pernah diproses? (cek PostgreSQL) ─► unduh PDF ─► hash SHA-256
-  ─► callback "processing" ─► ekstrak teks asli ─► potong 1.000 karakter
-  ─► embedding OpenAI ─► upsert Pinecone + metadata ─► callback "success" (jumlah chunk & Pasal)
+Jadwal 06.00 / tombol admin ─► JDIH KPU (PKPU) + koleksi Keputusan KPU Kabupaten Subang
+  ─► halaman detail (judul + status) ─► hanya status Berlaku, tahun 2024–2026
+  ─► sudah pernah diproses? (cek PostgreSQL) ─► unduh PDF ─► hash SHA-256 ─► callback "processing"
+  ─► ekstrak teks: PDF digital = teks asli; PDF scan / gagal dibaca = transkripsi LLM ke Markdown
+  ─► potong per Pasal/diktum ─► embedding OpenAI ─► upsert Pinecone + metadata ─► callback "success"
 Error di node mana pun ─► WF2 ─► error log di dashboard (bisa Retry)
 ```
 
@@ -160,7 +169,8 @@ cd kpu-ai-agent-nextjs && npm run lint && npx tsc --noEmit && npm run build
 
 ## 7. Hasil
 
-- 21 Peraturan KPU resmi (2024–2026) terindeks: ±2.000 chunk dan ±880 Pasal, semuanya terkonfirmasi di Pinecone dan terpantau di dashboard.
+- 21 Peraturan KPU resmi (2024–2026) dan Keputusan KPU Kabupaten Subang (mis. rekap data pemilih berkelanjutan per triwulan) terindeks: ±2.050 chunk berstatus berlaku, terkonfirmasi di Pinecone dan terpantau di dashboard.
+- Contoh: "Berapa jumlah pemilih Kecamatan Subang triwulan III 2026?" dijawab **104.453 orang** dengan sitasi Keputusan KPU Kabupaten Subang No. 21/2026.
 - Jawaban menyertakan nomor Pasal dan tautan PDF resmi. Pertanyaan tanpa bukti (mis. jadwal Pilkada 2029 yang aturannya belum terbit) dijawab "belum dapat memastikan", bukan dikarang.
 - WF1 teruji end-to-end: webhook dari dashboard → n8n → Pinecone → status sukses di dashboard. Pemindaian ulang melewati dokumen yang sudah diproses.
 
@@ -173,14 +183,11 @@ cd kpu-ai-agent-nextjs && npm run lint && npx tsc --noEmit && npm run build
 ## 9. Kendala & rencana pengembangan
 
 **Kendala:**
-- PDF hasil scan tidak memiliki teks, sehingga perlu OCR.
+- Sebagian produk hukum daerah belum diunggah ke situs resmi (mis. Perbup Subang 18/2026 tentang Tata Cara Pilkades Serentak), sehingga agent hanya dapat merujuk informasi resmi Pemprov Jawa Barat.
 - Halaman JDIH tidak menyediakan API, sehingga judul dan status dibaca dari HTML.
 - Waktu jawab 15–30 detik karena agent mencari dan memverifikasi sumber.
 
 **Rencana:**
-- OCR untuk PDF hasil scan.
-- Chunking per Pasal agar sitasi lebih presisi.
-- Ingestion Keputusan KPU Subang.
 - Kanal Telegram/WhatsApp.
 - Streaming jawaban.
 - Evaluasi akurasi jawaban dengan dataset uji.
