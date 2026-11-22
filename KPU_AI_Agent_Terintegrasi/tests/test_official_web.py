@@ -28,3 +28,11 @@ class OfficialWebTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_jabarprov_is_official_but_lookalike_is_not():
+    from app.agent.official_web import is_official_web_url
+    assert is_official_web_url("https://jabarprov.go.id/berita/pilkades-digital")
+    assert is_official_web_url("https://bappeda.jabarprov.go.id/kdm-pilkades-elektronik")
+    assert not is_official_web_url("https://jabarprov.go.id.contoh.com/palsu")
+    assert not is_official_web_url("https://www.scribd.com/document/1071100520/Perbup-No-18")

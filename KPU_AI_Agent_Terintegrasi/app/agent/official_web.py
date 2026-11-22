@@ -23,6 +23,8 @@ SEARCH_DOMAINS = [
     # yang diatur UU Desa/Permendagri dan Perda Kabupaten Subang).
     "peraturan.bpk.go.id",
     "jdih.kemendagri.go.id",
+    # Pemerintah Provinsi Jawa Barat: kebijakan dan pelaksanaan Pilkades digital (e-voting) di Jawa Barat.
+    "jabarprov.go.id",
 ]
 GOVERNMENT_LAW_HOSTS = {"peraturan.bpk.go.id", "jdih.kemendagri.go.id"}
 
@@ -44,6 +46,8 @@ def is_official_web_url(url: str) -> bool:
             or host in GOVERNMENT_LAW_HOSTS
             or host == "subang.go.id"
             or host.endswith(".subang.go.id")
+            or host == "jabarprov.go.id"
+            or host.endswith(".jabarprov.go.id")
         )
     except (ValueError, TypeError):
         return False
@@ -108,6 +112,7 @@ def search_official_web(query: str) -> tuple[str, list[Source]]:
             "Cari informasi resmi berkaitan dengan pertanyaan ini. "
             "Hanya gunakan situs KPU RI (www.kpu.go.id), JDIH KPU (jdih.kpu.go.id), "
             "KPU Kabupaten Subang (kab-subang.kpu.go.id), subang.go.id beserta subdomainnya, "
+            "situs resmi Pemerintah Provinsi Jawa Barat (jabarprov.go.id, mis. kebijakan Pilkades digital/e-voting), "
             "serta database peraturan pemerintah (peraturan.bpk.go.id, jdih.kemendagri.go.id) "
             "untuk topik yang diatur di luar KPU, misalnya Pilkades (UU Desa, Permendagri, Perda Subang). "
             "Jangan gunakan situs KPU kabupaten/kota lain, walaupun masih berdomain kpu.go.id. "
