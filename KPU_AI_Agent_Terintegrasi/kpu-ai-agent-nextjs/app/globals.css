@@ -157,3 +157,7 @@ body{background:radial-gradient(1200px 500px at 85% -10%,var(--glow) 0%,transpar
 .google-login{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:16px}
 .google-divider{display:flex;align-items:center;gap:10px;width:100%;color:var(--muted);font-size:11px}
 .google-divider::before,.google-divider::after{content:'';flex:1;border-top:1px solid var(--border)}
+.password-field{position:relative;display:block;margin-top:7px}
+.auth-card .password-field input{margin-top:0;padding-right:44px}
+.password-toggle{position:absolute;top:50%;right:6px;transform:translateY(-50%);display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:8px;background:transparent;color:var(--muted)}
+.password-toggle:hover{background:var(--surface2);color:var(--text)}

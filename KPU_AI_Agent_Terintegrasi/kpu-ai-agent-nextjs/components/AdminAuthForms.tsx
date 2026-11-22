@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import KpuLogo from '@/components/KpuLogo';
 import GoogleLoginButton from '@/components/GoogleLoginButton';
+import PasswordInput from '@/components/PasswordInput';
 import { httpErrorMessage } from '@/lib/httpError';
 
 type FormKind = 'login' | 'forgot' | 'reset' | 'change';
@@ -107,12 +108,11 @@ export default function AdminAuthForms({ kind, token }: Props) {
             <label>Kode verifikasi<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" required maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} placeholder="6 digit" /></label>
           ) : null}
           {kind === 'change' ? (
-            <label>Kata sandi saat ini<input type="password" autoComplete="current-password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
+            <label>Kata sandi saat ini<PasswordInput autoComplete="current-password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
           ) : null}
           {kind !== 'forgot' ? (
             <label>{kind === 'login' ? 'Kata sandi' : 'Kata sandi baru'}
-              <input
-                type="password"
+              <PasswordInput
                 autoComplete={kind === 'login' ? 'current-password' : 'new-password'}
                 required minLength={kind === 'login' ? 1 : 12} maxLength={128}
                 value={password} onChange={(event) => setPassword(event.target.value)}
