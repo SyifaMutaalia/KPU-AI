@@ -190,6 +190,9 @@
       "name": "02 - Ambil Daftar Dokumen JDIH",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
       "position": [
         64,
         704
@@ -202,7 +205,8 @@
               "responseFormat": "text",
               "outputPropertyName": "=html"
             }
-          }
+          },
+          "timeout": 120000
         }
       }
     },
