@@ -707,7 +707,7 @@
         260
       ],
       "parameters": {
-        "jsCode": "const PROMPT = \"Anda adalah transkriptor dokumen hukum Indonesia, BUKAN peringkas. Baca seluruh isi PDF terlampir berdasarkan gambar halaman dan kembalikan HANYA Markdown isi dokumen, dalam urutan baca yang benar. Tulis penanda <!-- PAGE: N --> di awal setiap halaman. Pertahankan setiap kata, nomor, tanggal, Pasal, ayat, huruf, diktum (KESATU, KEDUA, dst), judul, dan catatan kaki. Jangan menyimpulkan, menerjemahkan, mengoreksi, atau mengarang teks. Untuk teks kurang jelas tulis [TIDAK TERBACA]. Untuk tabel gunakan tabel Markdown tanpa menghilangkan baris. Tulis setiap diktum di baris baru diawali labelnya, mis. 'KESATU : ...'. Abaikan tanda tangan, stempel, dan gambar.\";\nconst out = [];\nfor (let i = 0; i < $input.all().length; i++) {\n  const buffer = await this.helpers.getBinaryDataBuffer(i, 'data');\n  out.push({ json: { request: {\n    model: 'gpt-6-luna', store: false, reasoning: { effort: 'low' }, max_output_tokens: 32000,\n    instructions: PROMPT,\n    input: [{ role: 'user', content: [\n      { type: 'input_file', filename: 'dokumen.pdf', file_data: 'data:application/pdf;base64,' + buffer.toString('base64') },\n      { type: 'input_text', text: 'Transkripsikan seluruh dokumen ini secara lengkap ke Markdown.' },\n    ] }],\n  } }, pairedItem: { item: i } });\n}\nreturn out;\n"
+        "jsCode": "const PROMPT = \"Anda adalah transkriptor dokumen hukum Indonesia, BUKAN peringkas. Baca seluruh isi PDF terlampir berdasarkan gambar halaman dan kembalikan HANYA Markdown isi dokumen, dalam urutan baca yang benar. Tulis penanda <!-- PAGE: N --> di awal setiap halaman. Pertahankan setiap kata, nomor, tanggal, Pasal, ayat, huruf, diktum (KESATU, KEDUA, dst), judul, dan catatan kaki. Jangan menyimpulkan, menerjemahkan, mengoreksi, atau mengarang teks. Untuk teks kurang jelas tulis [TIDAK TERBACA]. Untuk tabel gunakan tabel Markdown tanpa menghilangkan baris. Tulis setiap diktum di baris baru diawali labelnya, mis. 'KESATU : ...'. Abaikan tanda tangan, stempel, dan gambar.\";\n// PDF sudah diunggah ke OpenAI (node sebelumnya); di sini hanya ID file, bukan isi PDF,\n// agar data eksekusi n8n tetap kecil dan memori server tidak habis.\nreturn $input.all().map((item, i) => ({ json: { file_id: item.json.id, request: {\n  model: 'gpt-6-luna', store: false, reasoning: { effort: 'low' }, max_output_tokens: 32000,\n  instructions: PROMPT,\n  input: [{ role: 'user', content: [\n    { type: 'input_file', file_id: item.json.id },\n    { type: 'input_text', text: 'Transkripsikan seluruh dokumen ini secara lengkap ke Markdown.' },\n  ] }],\n} }, pairedItem: { item: i } }));\n"
       }
     },
     {
@@ -798,6 +798,76 @@
       "parameters": {
         "batchSize": 1,
         "options": {}
+      }
+    },
+    {
+      "id": "upload-pdf-ke-openai",
+      "name": "Upload PDF ke OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "position": [
+        3200,
+        120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formData",
+              "name": "purpose",
+              "value": "user_data"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "CQtiURLB6FIbkOMI",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "hapus-file-openai",
+      "name": "Hapus File di OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [
+        3800,
+        100
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.openai.com/v1/files/{{ $('Siapkan Permintaan LLM').item.json.file_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "CQtiURLB6FIbkOMI",
+          "name": "OpenAI account"
+        }
       }
     }
   ],
@@ -1115,7 +1185,7 @@
       "main": [
         [
           {
-            "node": "Siapkan Permintaan LLM",
+            "node": "Upload PDF ke OpenAI",
             "type": "main",
             "index": 0
           }
@@ -1145,6 +1215,11 @@
         [
           {
             "node": "Ambil Markdown",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Hapus File di OpenAI",
             "type": "main",
             "index": 0
           }
@@ -1201,6 +1276,17 @@
         [
           {
             "node": "Proses Satu per Satu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload PDF ke OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Siapkan Permintaan LLM",
             "type": "main",
             "index": 0
           }
