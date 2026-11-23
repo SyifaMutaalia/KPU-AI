@@ -34,7 +34,7 @@ Index (`kpu-subang-rag`), namespace (`kpu_jdih`), dan text splitter tidak diubah
 
 1. Hanya dokumen dengan status **Berlaku** di halaman detail JDIH. Dokumen *Tidak Berlaku*, *Dicabut*, atau yang statusnya tidak terbaca tidak diproses.
 2. Hanya dokumen terbitan **tahun 2024 sampai 2026** (tahun dibaca dari judul "Nomor … Tahun YYYY", atau dari nama file seperti `2025pkpu001.pdf`).
-4. Paling banyak **5 dokumen baru per eksekusi** (node *Batasi 5 Dokumen per Jalan*), diproses **satu per satu** (node *Proses Satu per Satu*: unduh → OCR/ekstrak → Pinecone → callback, baru dokumen berikutnya) agar memori server n8n tidak habis. Sisa dokumen diproses pada jadwal berikutnya.
+4. Paling banyak **10 dokumen baru per eksekusi** (node *Batasi 5 Dokumen per Jalan*), diproses **satu per satu** (node *Proses Satu per Satu*: unduh → OCR/ekstrak → Pinecone → callback, baru dokumen berikutnya) agar memori server n8n tidak habis. Sisa dokumen diproses pada jadwal berikutnya.
 3. Dokumen yang `source_url`-nya sudah berstatus `success` di `ingestion.documents` tidak diproses ulang, baik dari jadwal harian, tombol **Pindai JDIH**, maupun webhook dengan `pdf_url`.
 
 **Yang di-embed adalah teks asli hasil ekstraksi PDF**, bukan hasil tulis ulang AI. Node "Normalisasi ke Markdown / JSON" dihapus: menulis ulang seluruh peraturan dengan LLM berisiko memotong atau mengubah isi pasal, sehingga chatbot bisa mengutip teks yang tidak ada di dokumen aslinya.

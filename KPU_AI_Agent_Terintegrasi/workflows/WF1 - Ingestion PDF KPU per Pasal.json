@@ -783,7 +783,7 @@
         560
       ],
       "parameters": {
-        "jsCode": "// Hemat memori server dan biaya OCR: paling banyak 5 dokumen baru per eksekusi.\n// Sisanya otomatis diproses pada jadwal berikutnya (dokumen yang sudah sukses dilewati).\nreturn $input.all().slice(0, 5);\n"
+        "jsCode": "// Hemat memori server dan biaya OCR: paling banyak 10 dokumen baru per eksekusi.\n// Sisanya otomatis diproses pada jadwal berikutnya (dokumen yang sudah sukses dilewati).\nreturn $input.all().slice(0, 10);\n"
       }
     },
     {
