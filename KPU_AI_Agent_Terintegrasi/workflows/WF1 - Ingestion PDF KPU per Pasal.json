@@ -772,6 +772,33 @@
       "parameters": {
         "jsCode": "\n// Satu Pasal atau satu diktum = satu chunk. Pasal sangat panjang dipecah per paragraf.\nconst DIKTUM = 'KESATU|KEDUA|KETIGA|KEEMPAT|KELIMA|KEENAM|KETUJUH|KEDELAPAN|KESEMBILAN|KESEPULUH|KESEBELAS|KEDUA BELAS|KETIGA BELAS|KEEMPAT BELAS|KELIMA BELAS';\nconst HEADING = new RegExp('^[\\\\s#*>|]*(Pasal\\\\s+\\\\d+[A-Z]?\\\\s*\\\\**\\\\s*$|(?:' + DIKTUM + ')\\\\s*\\\\**\\\\s*:)', 'i');\nconst MAX = 3500;\nconst out = [];\n$input.all().forEach((item, i) => {\n  const lines = String(item.json.text || '').split('\\n');\n  const units = [];\n  let cur = { ref: '', lines: [] };\n  for (const line of lines) {\n    const m = line.match(HEADING);\n    if (m && cur.lines.join('').trim()) { units.push(cur); cur = { ref: '', lines: [] }; }\n    if (m) cur.ref = m[1].replace(/[*:\\s]+$/g, '').replace(/\\s+/g, ' ').trim();\n    cur.lines.push(line);\n  }\n  if (cur.lines.join('').trim()) units.push(cur);\n  for (const u of units) {\n    let text = u.lines.join('\\n').trim();\n    const pieces = [];\n    while (text.length > MAX) {\n      let cut = text.lastIndexOf('\\n\\n', MAX);\n      if (cut < MAX / 2) cut = text.lastIndexOf('\\n', MAX);\n      if (cut < MAX / 2) cut = MAX;\n      pieces.push(text.slice(0, cut).trim());\n      text = text.slice(cut).trim();\n    }\n    if (text) pieces.push(text);\n    for (const p of pieces) {\n      if (p.replace(/<!-- PAGE: \\d+ -->/g, '').trim().length < 20) continue;\n      out.push({ json: { text: p, legal_reference: u.ref, text_source: item.json.transcribed_by_llm ? 'llm_markdown' : 'pdf_text' },\n                 pairedItem: { item: i } });\n    }\n  }\n});\nreturn out;\n"
       }
+    },
+    {
+      "id": "batasi-dokumen-per-jalan",
+      "name": "Batasi 5 Dokumen per Jalan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1416,
+        560
+      ],
+      "parameters": {
+        "jsCode": "// Hemat memori server dan biaya OCR: paling banyak 5 dokumen baru per eksekusi.\n// Sisanya otomatis diproses pada jadwal berikutnya (dokumen yang sudah sukses dilewati).\nreturn $input.all().slice(0, 5);\n"
+      }
+    },
+    {
+      "id": "proses-satu-per-satu",
+      "name": "Proses Satu per Satu",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1636,
+        560
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
     }
   ],
   "pinData": {},
@@ -862,7 +889,7 @@
       "main": [
         [
           {
-            "node": "Siapkan Dokumen",
+            "node": "Batasi 5 Dokumen per Jalan",
             "type": "main",
             "index": 0
           }
@@ -1140,6 +1167,40 @@
         [
           {
             "node": "Pinecone Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batasi 5 Dokumen per Jalan": {
+      "main": [
+        [
+          {
+            "node": "Proses Satu per Satu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Proses Satu per Satu": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Siapkan Dokumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kirim Status Sukses ke Admin": {
+      "main": [
+        [
+          {
+            "node": "Proses Satu per Satu",
             "type": "main",
             "index": 0
           }
