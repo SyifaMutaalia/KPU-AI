@@ -264,6 +264,10 @@
               {
                 "name": "text_source",
                 "value": "={{ $json.text_source }}"
+              },
+              {
+                "name": "ingest_run",
+                "value": "={{ String($execution.id) }}"
               }
             ]
           }
@@ -771,7 +775,7 @@
         400
       ],
       "parameters": {
-        "jsCode": "\n// Satu Pasal (termasuk Pasal I/II pada peraturan perubahan) atau satu diktum = satu chunk. Pasal sangat panjang dipecah per paragraf.\nconst DIKTUM = 'KESATU|KEDUA|KETIGA|KEEMPAT|KELIMA|KEENAM|KETUJUH|KEDELAPAN|KESEMBILAN|KESEPULUH|KESEBELAS|KEDUA BELAS|KETIGA BELAS|KEEMPAT BELAS|KELIMA BELAS';\nconst HEADING = new RegExp('^[\\\\s#*>|]*(Pasal\\\\s+(?:\\\\d+[A-Z]?|[IVXL]+)\\\\s*\\\\**\\\\s*$|(?:' + DIKTUM + ')\\\\s*\\\\**\\\\s*:)', 'i');\nconst MAX = 3500;\nconst out = [];\n$input.all().forEach((item, i) => {\n  const lines = String(item.json.text || '').split('\\n');\n  const units = [];\n  let cur = { ref: '', lines: [] };\n  for (const line of lines) {\n    const m = line.match(HEADING);\n    if (m && cur.lines.join('').trim()) { units.push(cur); cur = { ref: '', lines: [] }; }\n    if (m) cur.ref = m[1].replace(/[*:\\s]+$/g, '').replace(/\\s+/g, ' ').trim();\n    cur.lines.push(line);\n  }\n  if (cur.lines.join('').trim()) units.push(cur);\n  for (const u of units) {\n    let text = u.lines.join('\\n').trim();\n    const pieces = [];\n    while (text.length > MAX) {\n      let cut = text.lastIndexOf('\\n\\n', MAX);\n      if (cut < MAX / 2) cut = text.lastIndexOf('\\n', MAX);\n      if (cut < MAX / 2) cut = MAX;\n      pieces.push(text.slice(0, cut).trim());\n      text = text.slice(cut).trim();\n    }\n    if (text) pieces.push(text);\n    for (const p of pieces) {\n      if (p.replace(/<!-- PAGE: \\d+ -->/g, '').trim().length < 20) continue;\n      out.push({ json: { text: p, legal_reference: u.ref, text_source: item.json.transcribed_by_llm ? 'llm_markdown' : 'pdf_text' },\n                 pairedItem: { item: i } });\n    }\n  }\n});\nreturn out;\n"
+        "jsCode": "\n// Satu Pasal (termasuk Pasal I/II pada peraturan perubahan) atau satu diktum = satu chunk. Pasal sangat panjang dipecah per paragraf.\nconst DIKTUM = 'KESATU|KEDUA|KETIGA|KEEMPAT|KELIMA|KEENAM|KETUJUH|KEDELAPAN|KESEMBILAN|KESEPULUH|KESEBELAS|KEDUA BELAS|KETIGA BELAS|KEEMPAT BELAS|KELIMA BELAS';\nconst HEADING = new RegExp('^[\\\\s#*>|]*(Pasal\\\\s+(?:\\\\d+[A-Z]?|[IVXL]+)\\\\s*\\\\**\\\\s*$|(?:' + DIKTUM + ')\\\\s*\\\\**\\\\s*:)', 'i');\nconst MAX = 3500;\nconst out = [];\n$input.all().forEach((item, i) => {\n  // Buang footer JDIH (baris \"jdih.kpu.go.id\", watermark \"jdih.kpu.go.id/jabar/subang\") dan nomor halaman \"- 3 -\".\n  const lines = String(item.json.text || '')\n    .replace(/jdih\\.kpu\\.go\\.id\\/jabar\\/subang\\/?/gi, '')\n    .split('\\n')\n    .filter((l) => !/^\\s*jdih\\.kpu\\.go\\.id\\/?\\s*$/i.test(l) && !/^\\s*-\\s*\\d{1,3}\\s*-\\s*$/.test(l));\n  const units = [];\n  let cur = { ref: '', lines: [] };\n  for (const line of lines) {\n    const m = line.match(HEADING);\n    if (m && cur.lines.join('').trim()) { units.push(cur); cur = { ref: '', lines: [] }; }\n    if (m) cur.ref = m[1].replace(/[*:\\s]+$/g, '').replace(/\\s+/g, ' ').trim();\n    cur.lines.push(line);\n  }\n  if (cur.lines.join('').trim()) units.push(cur);\n  for (const u of units) {\n    let text = u.lines.join('\\n').trim();\n    const pieces = [];\n    while (text.length > MAX) {\n      let cut = text.lastIndexOf('\\n\\n', MAX);\n      if (cut < MAX / 2) cut = text.lastIndexOf('\\n', MAX);\n      if (cut < MAX / 2) cut = MAX;\n      pieces.push(text.slice(0, cut).trim());\n      text = text.slice(cut).trim();\n    }\n    if (text) pieces.push(text);\n    for (const p of pieces) {\n      if (p.replace(/<!-- PAGE: \\d+ -->/g, '').trim().length < 20) continue;\n      out.push({ json: { text: p, legal_reference: u.ref, text_source: item.json.transcribed_by_llm ? 'llm_markdown' : 'pdf_text' },\n                 pairedItem: { item: i } });\n    }\n  }\n});\nreturn out;\n"
       }
     },
     {
@@ -927,6 +931,90 @@
       ],
       "parameters": {
         "jsCode": "// Ingest manual (webhook dengan pdf_url): cari status keberlakuan dokumen di JDIH KPU\n// supaya tidak tercatat \"belum_diverifikasi\". Bila pencarian gagal, ingestion tetap jalan.\nconst plain = (s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\\s+/g, ' ').trim();\nconst UA = 'Mozilla/5.0 (compatible; KPU-AI-Agent-Ingestion/1.0)';\nconst http = this.helpers.httpRequest;\nconst out = [];\n\nasync function get(url, cookie) {\n  const res = await http({ method: 'GET', url, headers: { 'User-Agent': UA, ...(cookie ? { Cookie: cookie } : {}) },\n    returnFullResponse: true, ignoreHttpStatusErrors: true, disableFollowRedirect: true, timeout: 60000 });\n  return { status: res.statusCode, headers: res.headers || {}, body: typeof res.body === 'string' ? res.body : String(res.body || '') };\n}\n\nfunction findDetail(html, number, year, kind) {\n  const re = kind === 'subang'\n    ? /href=\"(https:\\/\\/jdih\\.kpu\\.go\\.id\\/kepkpukabkot\\/detail\\/[^\"]+)\"/g\n    : /href=\"(https:\\/\\/jdih\\.kpu\\.go\\.id\\/peraturan-kpu\\/detail\\/[^\"]+)\"/g;\n  const want = new RegExp(`Nomor\\\\s+0*${number}\\\\s+Tahun\\\\s+${year}\\\\b`, 'i');\n  for (const m of html.matchAll(re)) {\n    const seg = plain(html.slice(m.index, m.index + 900));\n    if (want.test(seg.slice(0, 400))) return m[1];\n  }\n  return null;\n}\n\nfor (const item of $input.all()) {\n  const j = { ...item.json };\n  const url = String(j.pdf_url || '');\n  const file = url.split(/[?#]/)[0].split('/').pop() || '';\n  const subang = url.includes('/data-kabko/subang/data_kepkpud/') && file.match(/((?:19|20)\\d{2})kpt(?:3213)?0*(\\d+)\\.pdf$/i);\n  const pkpu = url.includes('/data/data_pkpu/') && file.match(/((?:19|20)\\d{2})pkpu0*(\\d+)\\.pdf$/i);\n  if (subang || pkpu) {\n    const [, year, number] = subang || pkpu;\n    try {\n      let cookie = '';\n      const pages = [];\n      if (subang) {\n        const start = await get('https://jdih.kpu.go.id/koleksi/to_kabkot/32/3213/kepkpukabkot');\n        let set = start.headers['set-cookie'] || [];\n        if (!Array.isArray(set)) set = [set];\n        cookie = set.map((c) => String(c).split(';')[0]).filter(Boolean).join('; ');\n        for (let p = 1; p <= 5; p++) pages.push(`https://jdih.kpu.go.id/kepkpukabkot?page_kepkpukabkot=${p}`);\n      } else {\n        for (let p = 1; p <= 6; p++) pages.push(`https://jdih.kpu.go.id/peraturan-kpu?page=1&page_peraturan=${p}`);\n      }\n      let detailUrl = null;\n      for (const page of pages) {\n        const listing = await get(page, cookie);\n        detailUrl = findDetail(listing.body, number, year, subang ? 'subang' : 'pkpu');\n        if (detailUrl) break;\n      }\n      if (detailUrl) {\n        const detail = await get(detailUrl, cookie);\n        const text = plain(detail.body);\n        if (detail.body.includes(file)) {\n          const st = text.match(/Keterangan Status\\s*:\\s*(Tidak Berlaku|Dicabut|Berlaku|Diubah)/i);\n          const value = st ? st[1].toLowerCase() : '';\n          j.legal_status = value === 'berlaku' ? 'berlaku' : (value === 'tidak berlaku' || value === 'dicabut') ? 'tidak_berlaku' : 'belum_diverifikasi';\n          const t = subang\n            ? text.match(/(Keputusan Komisi Pemilihan Umum Kabupaten Subang Nomor .+?)\\s+Tipe\\s*:/i)\n            : text.match(/((?:Peraturan|Keputusan) Komisi Pemilihan Umum Nomor \\d+ Tahun \\d{4} tentang .+?)\\s+Tipe Dokumen\\s*:/i);\n          if (t && !j.title) j.title = t[1].trim().slice(0, 500);\n          j.year = j.year ?? Number(year);\n          j.document_number = j.document_number ?? String(Number(number));\n          j.detail_url = detailUrl;\n          j.document_type = j.document_type ?? (subang ? 'Keputusan KPU Kabupaten Subang' : 'PKPU');\n          if (!j.source || j.source === 'Admin' || j.source === 'Webhook') j.source = subang ? 'JDIH KPU Kabupaten Subang' : 'JDIH KPU';\n        }\n      }\n    } catch (e) { /* JDIH tidak bisa dihubungi: lanjut dengan status belum_diverifikasi */ }\n  }\n  if (j.legal_status === 'tidak_berlaku') {\n    throw new Error(`Dokumen ${file} berstatus Tidak Berlaku/Dicabut di JDIH, sehingga tidak diproses (hanya dokumen Berlaku).`);\n  }\n  out.push({ json: j, pairedItem: item.pairedItem ?? { item: out.length } });\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "cari-vektor-lama",
+      "name": "Cari Vektor Lama",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [
+        4702,
+        600
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://kpu-subang-rag-12eetyf.svc.aped-4627-b74a.pinecone.io/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "pineconeApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ namespace: 'kpu_jdih', topK: 1000, includeMetadata: true, includeValues: false, vector: Array(1536).fill(0.001), filter: { source_url: { '$eq': $json.source_url } } }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "pineconeApi": {
+          "id": "MR6PbOuxMO8yL2Vk",
+          "name": "Pinecone account"
+        }
+      }
+    },
+    {
+      "id": "pilih-id-lama",
+      "name": "Pilih ID Lama",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4902,
+        600
+      ],
+      "parameters": {
+        "jsCode": "// Vektor dokumen ini yang BUKAN dari eksekusi sekarang = versi lama -> dihapus.\nconst run = String($execution.id);\nreturn $input.all().map((item, i) => {\n  const matches = Array.isArray(item.json.matches) ? item.json.matches : [];\n  const ids = matches.filter((m) => String((m.metadata || {}).ingest_run || '') !== run).map((m) => m.id);\n  // Pinecone menolak daftar kosong; id fiktif aman dihapus.\n  return { json: { ids: ids.length ? ids : ['__tidak_ada_vektor_lama__'], jumlah: ids.length }, pairedItem: { item: i } };\n});\n"
+      }
+    },
+    {
+      "id": "hapus-vektor-lama",
+      "name": "Hapus Vektor Lama",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [
+        5102,
+        600
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://kpu-subang-rag-12eetyf.svc.aped-4627-b74a.pinecone.io/vectors/delete",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "pineconeApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ namespace: 'kpu_jdih', ids: $json.ids }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "pineconeApi": {
+          "id": "MR6PbOuxMO8yL2Vk",
+          "name": "Pinecone account"
+        }
+      }
+    },
+    {
+      "id": "kembalikan-ringkasan",
+      "name": "Kembalikan Ringkasan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5302,
+        600
+      ],
+      "parameters": {
+        "jsCode": "// Lanjutkan dengan ringkasan upsert (bukan balasan Pinecone) untuk callback sukses.\nreturn $input.all().map((item, i) => ({ json: $('Rangkum Hasil Upsert').itemMatching(i).json, pairedItem: { item: i } }));\n"
       }
     }
   ],
@@ -1162,7 +1250,7 @@
       "main": [
         [
           {
-            "node": "Kirim Status Sukses ke Admin",
+            "node": "Cari Vektor Lama",
             "type": "main",
             "index": 0
           }
@@ -1385,6 +1473,50 @@
         [
           {
             "node": "periksa dokumen yang sudah diproses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cari Vektor Lama": {
+      "main": [
+        [
+          {
+            "node": "Pilih ID Lama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pilih ID Lama": {
+      "main": [
+        [
+          {
+            "node": "Hapus Vektor Lama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hapus Vektor Lama": {
+      "main": [
+        [
+          {
+            "node": "Kembalikan Ringkasan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kembalikan Ringkasan": {
+      "main": [
+        [
+          {
+            "node": "Kirim Status Sukses ke Admin",
             "type": "main",
             "index": 0
           }
