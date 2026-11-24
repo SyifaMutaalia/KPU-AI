@@ -34,8 +34,10 @@ export default function AdminShell({ children }: Props) {
     try { localStorage.setItem(SEEN_KEY, at); } catch { /* abaikan */ }
   }
   useEffect(() => { if (pathname.includes('/errors')) markErrorsSeen(latestErrorAt); }, [pathname, latestErrorAt]);
-  const hasUnseenErrors = openErrors > 0 && !!latestErrorAt && !pathname.includes('/errors')
+  // Error yang belum dilihat admin: ada error terbuka yang lebih baru dari penanda "sudah dicek".
+  const unseenErrors = openErrors > 0 && !!latestErrorAt
     && (!seenErrorAt || new Date(latestErrorAt).getTime() > new Date(seenErrorAt).getTime());
+  const hasUnseenErrors = unseenErrors && !pathname.includes('/errors');
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Tutup sidebar mobile setiap pindah halaman.
@@ -141,7 +143,7 @@ export default function AdminShell({ children }: Props) {
           <Link className={pathname === '/admin/dashboard' ? 'admin-nav active' : 'admin-nav'} href="/admin/dashboard">Ringkasan</Link>
           <Link className={pathname.includes('/workflows') ? 'admin-nav active' : 'admin-nav'} href="/admin/dashboard/workflows">Workflow n8n</Link>
           <Link className={pathname.includes('/documents') ? 'admin-nav active' : 'admin-nav'} href="/admin/dashboard/documents">Dokumen</Link>
-          <Link className={pathname.includes('/errors') ? 'admin-nav active' : 'admin-nav'} href="/admin/dashboard/errors">Error log{openErrors > 0 && <span className="nav-badge">{openErrors}</span>}</Link>
+          <Link className={pathname.includes('/errors') ? 'admin-nav active' : 'admin-nav'} href="/admin/dashboard/errors">Error log{unseenErrors && !pathname.includes('/errors') && <span className="nav-badge">{openErrors}</span>}</Link>
         </nav>
         <div className="admin-user"><span>{email}</span><button className="button secondary" onClick={logout}>Keluar</button></div>
       </aside>
