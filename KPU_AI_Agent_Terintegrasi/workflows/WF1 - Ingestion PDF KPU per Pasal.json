@@ -293,7 +293,8 @@
       "alwaysOutputData": false,
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 5000,
+      "waitBetweenTries": 15000,
+      "onError": "continueRegularOutput",
       "position": [
         464,
         704
@@ -310,7 +311,7 @@
           "batching": {
             "batch": {
               "batchSize": 1,
-              "batchInterval": 1000
+              "batchInterval": 2000
             }
           },
           "timeout": 120000
