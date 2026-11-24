@@ -591,11 +591,11 @@ def list_documents(
         count_query = count_query.where(matcher)
     # Filter waktu memakai hari kalender WIB (UTC+7) terhadap waktu terakhir diperbarui.
     if date_from:
-        start = datetime.combine(date_from, time.min, tzinfo=WIB)
+        start = datetime.combine(date_from, time.min, tzinfo=WIB).astimezone(timezone.utc)
         query = query.where(IngestionDocument.updated_at >= start)
         count_query = count_query.where(IngestionDocument.updated_at >= start)
     if date_to:
-        end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=WIB)
+        end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=WIB).astimezone(timezone.utc)
         query = query.where(IngestionDocument.updated_at < end)
         count_query = count_query.where(IngestionDocument.updated_at < end)
     items = db.scalars(
@@ -619,16 +619,29 @@ def list_documents(
 @router.get("/dashboard/errors", response_model=AdminErrorsOut)
 def list_errors(
     status: str | None = Query(default=None, max_length=40),
+    date_from: date | None = Query(default=None, description="Tanggal awal (WIB), format YYYY-MM-DD"),
+    date_to: date | None = Query(default=None, description="Tanggal akhir (WIB), format YYYY-MM-DD"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     _user: AdminUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="Tanggal awal tidak boleh setelah tanggal akhir.")
     query = select(IngestionErrorLog)
     count_query = select(func.count()).select_from(IngestionErrorLog)
     if status:
         query = query.where(IngestionErrorLog.status == status)
         count_query = count_query.where(IngestionErrorLog.status == status)
+    # Filter waktu kejadian error menurut hari kalender WIB.
+    if date_from:
+        start = datetime.combine(date_from, time.min, tzinfo=WIB).astimezone(timezone.utc)
+        query = query.where(IngestionErrorLog.occurred_at >= start)
+        count_query = count_query.where(IngestionErrorLog.occurred_at >= start)
+    if date_to:
+        end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=WIB).astimezone(timezone.utc)
+        query = query.where(IngestionErrorLog.occurred_at < end)
+        count_query = count_query.where(IngestionErrorLog.occurred_at < end)
     rows = db.scalars(
         query.order_by(IngestionErrorLog.occurred_at.desc())
         .offset(
@@ -876,6 +889,28 @@ def ingestion_callback(
         )
     now = utcnow()
     document = db.get(IngestionDocument, payload.document_id)
+    if payload.status == "pending":
+        # "pending" = masuk antrean WF1, belum mulai diunduh. Tidak menimpa dokumen yang
+        # sudah sukses atau sedang diproses, dan tidak menghapus metadata yang sudah ada.
+        if not document:
+            document = IngestionDocument(
+                id=payload.document_id,
+                source_url=payload.source_url,
+                document_type=payload.document_type,
+                document_number=payload.document_number,
+                title=payload.title,
+                year=payload.year,
+                status="pending",
+            )
+            db.add(document)
+        elif document.status not in {"success", "processing"}:
+            document.status = "pending"
+            for field in ("document_type", "document_number", "title", "year"):
+                if getattr(payload, field) is not None:
+                    setattr(document, field, getattr(payload, field))
+        document.updated_at = now
+        db.commit()
+        return IngestionCallbackOut(status=document.status, document_id=payload.document_id, run_id="")
     if not document:
         document = IngestionDocument(
             id=payload.document_id, source_url=payload.source_url

@@ -30,6 +30,8 @@ Index (`kpu-subang-rag`), namespace (`kpu_jdih`), dan text splitter tidak diubah
 
 **OCR dengan LLM (tanpa Tesseract):** setelah *Extract PDF*, node *Cek Teks PDF* menilai apakah PDF hasil scan (teks kurang dari 150 karakter per halaman, watermark JDIH tidak dihitung). PDF scan diunggah sebagai file ke OpenAI (*Upload PDF ke OpenAI*, Files API), lalu ditranskripsi lewat Responses API memakai `file_id` (*Transkripsi PDF Scan (LLM)*, credential **OpenAI account**); file dihapus kembali dari OpenAI setelahnya (*Hapus File di OpenAI*). Isi PDF tidak pernah disimpan sebagai base64 di data eksekusi n8n, sehingga memori server tetap kecil. ditranskripsi apa adanya ke Markdown dengan penanda `<!-- PAGE: N -->`. PDF digital tetap memakai teks aslinya. Kedua jalur lalu dipotong per Pasal/diktum (*Potong per Pasal/Diktum*) sebelum embedding, dan metadata `legal_reference` serta `text_source` (`llm_markdown` / `pdf_text`) ikut disimpan.
 
+**Status dokumen di dashboard admin:** *pending* (antre) dikirim node *Kirim Status Antre ke Admin* untuk dokumen yang akan diproses pada eksekusi ini; *processing* dikirim tepat setelah PDF diunduh (node *Kirim Status Processing ke Admin*, di jalur utama sebelum OCR); *success* setelah Pinecone mengonfirmasi upsert; *failed* bila langkah mana pun gagal (via WF2). Status *pending* tidak menimpa dokumen yang sudah *success*.
+
 **Aturan seleksi dokumen** (node *Periksa Link Download* dan *periksa dokumen yang sudah diproses*):
 
 1. Hanya dokumen dengan status **Berlaku** di halaman detail JDIH. Dokumen *Tidak Berlaku*, *Dicabut*, atau yang statusnya tidak terbaca tidak diproses.

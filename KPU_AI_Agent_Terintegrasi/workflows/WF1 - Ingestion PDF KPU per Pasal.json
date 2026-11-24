@@ -538,7 +538,7 @@
         400
       ],
       "parameters": {
-        "jsCode": "// Node Crypto (Hitung Hash File) tidak meneruskan file binary.\n// Ambil kembali file PDF dari \"Download PDF\" untuk item yang sama.\nreturn $input.all().map((item, index) => {\n  const source = $('Download PDF').itemMatching(index);\n  if (!source || !source.binary || !source.binary.data) {\n    throw new Error('File PDF hasil download tidak ditemukan untuk ' + (item.json.pdf_url || 'item ' + index));\n  }\n  return { json: item.json, binary: source.binary, pairedItem: { item: index } };\n});\n"
+        "jsCode": "// Node Crypto (Hitung Hash File) tidak meneruskan file binary.\n// Ambil kembali file PDF dari \"Download PDF\" untuk item yang sama.\nreturn $input.all().map((item, index) => {\n  const source = $('Download PDF').itemMatching(index);\n  if (!source || !source.binary || !source.binary.data) {\n    throw new Error('File PDF hasil download tidak ditemukan untuk ' + ('item ' + index));\n  }\n  // Data dokumen diambil dari Hitung Hash File (output node callback hanya berisi balasan backend).\n  return { json: $('Hitung Hash File').itemMatching(index).json, binary: source.binary, pairedItem: { item: index } };\n});\n"
       }
     },
     {
@@ -870,6 +870,51 @@
           "name": "OpenAI account"
         }
       }
+    },
+    {
+      "id": "kirim-status-antre",
+      "name": "Kirim Status Antre ke Admin",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "position": [
+        1456,
+        760
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://ai-agent-kpu-api.vercel.app/api/v1/admin/ingestion/callback",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workflow: 'WF1', execution_id: String($execution.id), status: 'pending', document_id: 'jdih-' + $json.pdf_url.hash('sha256'), source_url: $json.pdf_url, namespace: 'kpu_jdih', pinecone_confirmed: false }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TJJ6Tskkna9yMYnf",
+          "name": "KPU Ingestion Callback (Vercel)"
+        }
+      }
+    },
+    {
+      "id": "kembalikan-data-antrean",
+      "name": "Kembalikan Data Antrean",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1656,
+        760
+      ],
+      "parameters": {
+        "jsCode": "// Lanjutkan dengan data dokumen (bukan balasan callback antre).\nreturn $input.all().map((item, i) => ({ json: $('Batasi 5 Dokumen per Jalan').itemMatching(i).json, pairedItem: { item: i } }));\n"
+      }
     }
   ],
   "pinData": {},
@@ -1096,11 +1141,6 @@
             "node": "Kirim Status Processing ke Admin",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "Gabungkan File & Hash",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -1253,7 +1293,7 @@
       "main": [
         [
           {
-            "node": "Proses Satu per Satu",
+            "node": "Kirim Status Antre ke Admin",
             "type": "main",
             "index": 0
           }
@@ -1288,6 +1328,39 @@
         [
           {
             "node": "Siapkan Permintaan LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kirim Status Processing ke Admin": {
+      "main": [
+        [
+          {
+            "node": "Gabungkan File & Hash",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kirim Status Antre ke Admin": {
+      "main": [
+        [
+          {
+            "node": "Kembalikan Data Antrean",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kembalikan Data Antrean": {
+      "main": [
+        [
+          {
+            "node": "Proses Satu per Satu",
             "type": "main",
             "index": 0
           }

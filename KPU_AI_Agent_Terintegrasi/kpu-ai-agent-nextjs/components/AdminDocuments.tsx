@@ -40,7 +40,8 @@ export default function AdminDocuments() {
     finally { setLoading(false); }
   }, [page, status, submittedQuery, dateFrom, dateTo]);
   useEffect(() => { void load(); }, [load]);
-  const hasProcessing = Boolean(data?.items.some((row) => row.status === 'processing'));
+  // Selama ada dokumen antre atau sedang diproses, tabel diperbarui otomatis.
+  const hasProcessing = Boolean(data?.items.some((row) => row.status === 'processing' || row.status === 'pending'));
   useEffect(() => {
     if (!hasProcessing) return;
     const timer = window.setInterval(() => { void load(); }, 15000);
@@ -52,7 +53,7 @@ export default function AdminDocuments() {
     <header className="admin-heading"><div><p className="eyebrow">INGESTION</p><h1>Dokumen</h1><p>Dokumen yang diunduh WF1, jumlah chunk hasil embedding, dan konfirmasi insert Pinecone.</p></div></header>
     <IngestionControl onStarted={() => { window.setTimeout(() => void load(), 5000); }} />
     <form className="admin-filters" onSubmit={search}>
-      <label>Status<select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">Semua</option><option value="pending">Pending</option><option value="processing">Processing</option><option value="success">Sukses</option><option value="failed">Gagal</option></select></label>
+      <label>Status<select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">Semua</option><option value="pending">Pending (antre)</option><option value="processing">Processing (sedang diproses)</option><option value="success">Sukses</option><option value="failed">Gagal</option></select></label>
       <label className="search-field">Cari<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Judul, nomor, atau URL" maxLength={200} /></label>
       <label>Dari tanggal<input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} /></label>
       <label>Sampai tanggal<input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} /></label>

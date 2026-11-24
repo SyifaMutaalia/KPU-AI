@@ -522,3 +522,43 @@ def test_documents_filter_by_date(client):
     assert client.get(url, params={"date_from": "2026-11-24", "date_to": "2026-11-01"}).status_code == 422
     item = client.get(url, params={"date_from": "2026-11-22"}).json()["items"][0]
     assert item["updated_at"].startswith("2026-11-23")
+
+
+def test_pending_callback_queues_without_overwriting_success(client, monkeypatch):
+    from app.core.config import get_settings
+    monkeypatch.setattr(get_settings(), "ingestion_callback_secret", "test-ingestion-key")
+    headers = {"X-Ingestion-Key": "test-ingestion-key"}
+    base = {"workflow": "WF1", "execution_id": "exec-1", "document_id": "doc-q",
+            "source_url": "https://jdih.kpu.go.id/data/q.pdf", "title": "Keputusan Uji"}
+    with Session(get_engine()) as db:
+        db.add(IngestionDocument(id="doc-ok", source_url="https://jdih.kpu.go.id/data/ok.pdf", status="success",
+                                 title="Judul lama", pinecone_confirmed=True))
+        db.commit()
+    queued = client.post("/api/v1/admin/ingestion/callback", json={**base, "status": "pending"}, headers=headers)
+    assert queued.status_code == 200, queued.text
+    assert queued.json()["status"] == "pending"
+    kept = client.post("/api/v1/admin/ingestion/callback",
+                       json={**base, "document_id": "doc-ok", "source_url": "https://jdih.kpu.go.id/data/ok.pdf",
+                             "status": "pending", "title": None}, headers=headers)
+    assert kept.json()["status"] == "success"
+    with Session(get_engine()) as db:
+        assert db.get(IngestionDocument, "doc-q").status == "pending"
+        ok = db.get(IngestionDocument, "doc-ok")
+        assert ok.status == "success" and ok.title == "Judul lama" and ok.pinecone_confirmed is True
+
+
+def test_errors_filter_by_date(client):
+    from datetime import datetime, timezone
+    create_admin(email="admin@example.org", must_change=False)
+    with Session(get_engine()) as db:
+        for idx, stamp in enumerate([datetime(2026, 11, 20, 3, 0, tzinfo=timezone.utc), datetime(2026, 11, 23, 23, 7, tzinfo=timezone.utc)]):
+            db.add(IngestionErrorLog(workflow="WF1", execution_id=f"e{idx}", node="n", message="m", status="failed",
+                                     retry_attempts=0, details="{}", occurred_at=stamp))
+        db.commit()
+    login(client, email="admin@example.org")
+    url = "/api/v1/admin/dashboard/errors"
+    assert client.get(url).json()["total"] == 2
+    # 23 Nov 23.07 UTC = 24 Nov 06.07 WIB
+    assert client.get(url, params={"date_from": "2026-11-24", "date_to": "2026-11-24"}).json()["total"] == 1
+    assert client.get(url, params={"date_to": "2026-11-23"}).json()["total"] == 1
+    assert client.get(url, params={"date_from": "2026-11-25", "date_to": "2026-11-01"}).status_code == 422

@@ -56,8 +56,8 @@ export default function AdminDashboard() {
   const metrics = [
     ['Total dokumen', data?.documents.total ?? 0],
     ['Dokumen sukses', data?.documents.success ?? 0],
-    ['Pending', data?.documents.pending ?? 0],
-    ['Processing', data?.documents.processing ?? 0],
+    ['Pending (antre)', data?.documents.pending ?? 0],
+    ['Processing (sedang diproses)', data?.documents.processing ?? 0],
     ['Failed', data?.documents.failed ?? 0],
   ];
 

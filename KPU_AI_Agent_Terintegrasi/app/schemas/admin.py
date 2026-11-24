@@ -185,7 +185,7 @@ class IngestionCallbackIn(BaseModel):
     workflow: str = Field(min_length=1, max_length=120)
     execution_id: str = Field(min_length=1, max_length=128)
     retry_error_id: str | None = Field(default=None, max_length=36)
-    status: Literal["processing", "success", "failed"]
+    status: Literal["pending", "processing", "success", "failed"]
     document_id: str = Field(min_length=1, max_length=128)
     source_url: str = Field(min_length=1, max_length=2048)
     document_type: str | None = Field(default=None, max_length=120)
