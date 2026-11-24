@@ -501,3 +501,24 @@ def test_google_credential_checks_audience(monkeypatch):
     with pytest.raises(HTTPException) as err:
         admin_routes._verify_google_credential("x" * 30, "client-123")
     assert err.value.status_code == 401
+
+
+def test_documents_filter_by_date(client):
+    from datetime import datetime, timezone
+    from app.db.models import IngestionDocument
+
+    create_admin(email="admin@example.org", must_change=False)
+    with Session(get_engine()) as db:
+        for idx, stamp in enumerate([datetime(2026, 11, 20, 3, 0, tzinfo=timezone.utc), datetime(2026, 11, 23, 3, 0, tzinfo=timezone.utc)]):
+            db.add(IngestionDocument(id=f"doc-{idx}", source_url=f"https://jdih.kpu.go.id/data/{idx}.pdf", status="success",
+                                     created_at=stamp, updated_at=stamp))
+        db.commit()
+    login(client, email="admin@example.org")
+    url = "/api/v1/admin/dashboard/documents"
+    assert client.get(url).json()["total"] == 2
+    assert client.get(url, params={"date_from": "2026-11-22"}).json()["total"] == 1
+    assert client.get(url, params={"date_to": "2026-11-20"}).json()["total"] == 1
+    assert client.get(url, params={"date_from": "2026-11-21", "date_to": "2026-11-22"}).json()["total"] == 0
+    assert client.get(url, params={"date_from": "2026-11-24", "date_to": "2026-11-01"}).status_code == 422
+    item = client.get(url, params={"date_from": "2026-11-22"}).json()["items"][0]
+    assert item["updated_at"].startswith("2026-11-23")

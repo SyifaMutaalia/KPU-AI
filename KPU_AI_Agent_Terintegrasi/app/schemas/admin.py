@@ -141,6 +141,8 @@ class AdminDocumentOut(BaseModel):
     status: str
     namespace: str | None
     last_processed_at: datetime | None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     chunks_count: int | None
     pasal_count: int | None
     pinecone_confirmed: bool

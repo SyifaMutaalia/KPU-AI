@@ -161,3 +161,13 @@ body{background:radial-gradient(1200px 500px at 85% -10%,var(--glow) 0%,transpar
 .auth-card .password-field input{margin-top:0;padding-right:44px}
 .password-toggle{position:absolute;top:50%;right:6px;transform:translateY(-50%);display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:8px;background:transparent;color:var(--muted)}
 .password-toggle:hover{background:var(--surface2);color:var(--text)}
+
+/* Waktu pesan chat dan riwayat */
+.message-time{display:block;margin-top:4px;font-size:10.5px;color:var(--muted)}
+.message.user .message-time{text-align:right;color:var(--on-primary);opacity:.8}
+.history-entry{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+.history-title{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history-time{font-size:10px;color:var(--muted)}
+.admin-filters{flex-wrap:wrap}
+.admin-filters input[type=date]{min-width:150px;color-scheme:inherit}
+@media(max-width:620px){.admin-filters label{flex:1 1 100%}.admin-filters select,.admin-filters input{min-width:0;width:100%}}

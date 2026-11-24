@@ -5,7 +5,7 @@ import logging
 import secrets
 import smtplib
 import ssl
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from email.message import EmailMessage
 from urllib.parse import quote
 
@@ -127,6 +127,8 @@ def _send_reset_email(email: str, token: str, code: str) -> None:
             smtp.login(settings.smtp_username, settings.smtp_password)
         smtp.send_message(message)
 
+
+WIB = timezone(timedelta(hours=7))  # zona waktu Indonesia Barat untuk filter tanggal
 
 @router.get("/auth/csrf", response_model=AdminCsrfOut)
 def csrf_bootstrap(request: Request, response: Response, db: Session = Depends(get_db)):
@@ -562,6 +564,8 @@ def dashboard_workflows(_user: AdminUser = Depends(require_admin)):
 def list_documents(
     status: str | None = Query(default=None, max_length=32),
     q: str | None = Query(default=None, max_length=200),
+    date_from: date | None = Query(default=None, description="Tanggal awal (WIB), format YYYY-MM-DD"),
+    date_to: date | None = Query(default=None, description="Tanggal akhir (WIB), format YYYY-MM-DD"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     _user: AdminUser = Depends(require_admin),
@@ -569,6 +573,8 @@ def list_documents(
 ):
     if status and status not in {"pending", "processing", "success", "failed"}:
         raise HTTPException(status_code=422, detail="Filter status tidak valid.")
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="Tanggal awal tidak boleh setelah tanggal akhir.")
     query = select(IngestionDocument)
     count_query = select(func.count()).select_from(IngestionDocument)
     if status:
@@ -583,6 +589,15 @@ def list_documents(
         )
         query = query.where(matcher)
         count_query = count_query.where(matcher)
+    # Filter waktu memakai hari kalender WIB (UTC+7) terhadap waktu terakhir diperbarui.
+    if date_from:
+        start = datetime.combine(date_from, time.min, tzinfo=WIB)
+        query = query.where(IngestionDocument.updated_at >= start)
+        count_query = count_query.where(IngestionDocument.updated_at >= start)
+    if date_to:
+        end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=WIB)
+        query = query.where(IngestionDocument.updated_at < end)
+        count_query = count_query.where(IngestionDocument.updated_at < end)
     items = db.scalars(
         query.order_by(IngestionDocument.updated_at.desc())
         .offset(

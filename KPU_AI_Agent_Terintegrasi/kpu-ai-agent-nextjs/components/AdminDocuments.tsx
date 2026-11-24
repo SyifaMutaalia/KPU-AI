@@ -9,7 +9,7 @@ import { httpErrorMessage } from '@/lib/httpError';
 type DocumentRow = {
   id: string; source_url: string; document_type: string | null; document_number: string | null;
   title: string | null; year: number | null; file_hash: string | null; status: string;
-  namespace: string | null; last_processed_at: string | null; chunks_count: number | null;
+  namespace: string | null; last_processed_at: string | null; created_at?: string | null; updated_at?: string | null; chunks_count: number | null;
   pasal_count: number | null; pinecone_confirmed: boolean;
 };
 type PageData = { items: DocumentRow[]; page: number; page_size: number; total: number };
@@ -19,6 +19,8 @@ export default function AdminDocuments() {
   const [status, setStatus] = useState('');
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -27,6 +29,8 @@ export default function AdminDocuments() {
     const params = new URLSearchParams({ page: String(page), page_size: '25' });
     if (status) params.set('status', status);
     if (submittedQuery) params.set('q', submittedQuery);
+    if (dateFrom) params.set('date_from', dateFrom);
+    if (dateTo) params.set('date_to', dateTo);
     try {
       const response = await fetch(`/api/admin/dashboard/documents?${params}`, { cache: 'no-store' });
       const result = await response.json();
@@ -34,7 +38,7 @@ export default function AdminDocuments() {
       setData(result);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Gagal memuat dokumen.'); }
     finally { setLoading(false); }
-  }, [page, status, submittedQuery]);
+  }, [page, status, submittedQuery, dateFrom, dateTo]);
   useEffect(() => { void load(); }, [load]);
   const hasProcessing = Boolean(data?.items.some((row) => row.status === 'processing'));
   useEffect(() => {
@@ -50,13 +54,16 @@ export default function AdminDocuments() {
     <form className="admin-filters" onSubmit={search}>
       <label>Status<select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">Semua</option><option value="pending">Pending</option><option value="processing">Processing</option><option value="success">Sukses</option><option value="failed">Gagal</option></select></label>
       <label className="search-field">Cari<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Judul, nomor, atau URL" maxLength={200} /></label>
+      <label>Dari tanggal<input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} /></label>
+      <label>Sampai tanggal<input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} /></label>
       <button className="button primary" type="submit">Cari</button>
+      {(dateFrom || dateTo || submittedQuery || status) && <button className="button secondary" type="button" onClick={() => { setStatus(''); setQuery(''); setSubmittedQuery(''); setDateFrom(''); setDateTo(''); setPage(1); }}>Reset</button>}
     </form>
     {loading && <p className="admin-state" role="status">Memuat dokumen...</p>}
     {error && <div className="error-box" role="alert">{error}<button onClick={() => void load()}>Coba lagi</button></div>}
     {!loading && !error && data && data.items.length === 0 && <p className="admin-empty">Tidak ada dokumen untuk filter ini.</p>}
     {!loading && !error && data && data.items.length > 0 && <>
-      <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Dokumen</th><th>Tipe / nomor</th><th>Tahun</th><th>Status DB</th><th>Pinecone</th><th>Namespace</th><th>Chunks / Pasal</th><th>Diproses</th><th>File hash</th></tr></thead>
+      <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Dokumen</th><th>Tipe / nomor</th><th>Tahun</th><th>Status DB</th><th>Pinecone</th><th>Namespace</th><th>Chunks / Pasal</th><th>Ditambahkan</th><th>Terakhir diperbarui</th><th>Sukses diproses</th><th>File hash</th></tr></thead>
         <tbody>{data.items.map((row) => <tr key={row.id}>
           <td>{row.source_url ? <Link href={row.source_url} target="_blank" rel="noreferrer">{row.title || row.source_url}</Link> : row.title || row.id}</td>
           <td>{row.document_type || '—'}<small>{row.document_number || '—'}</small></td>
@@ -65,6 +72,8 @@ export default function AdminDocuments() {
           <td>{row.pinecone_confirmed ? 'Terkonfirmasi' : 'Belum dikonfirmasi'}</td>
           <td>{row.namespace || '—'}</td>
           <td>{row.chunks_count ?? '—'} / {row.pasal_count ?? '—'}</td>
+          <td>{row.created_at ? new Date(row.created_at).toLocaleString('id-ID') : '—'}</td>
+          <td>{row.updated_at ? new Date(row.updated_at).toLocaleString('id-ID') : '—'}</td>
           <td>{row.last_processed_at ? new Date(row.last_processed_at).toLocaleString('id-ID') : '—'}</td>
           <td className="hash-cell">{row.file_hash || '—'}</td>
         </tr>)}</tbody>
