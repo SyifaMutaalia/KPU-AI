@@ -562,3 +562,18 @@ def test_errors_filter_by_date(client):
     assert client.get(url, params={"date_from": "2026-11-24", "date_to": "2026-11-24"}).json()["total"] == 1
     assert client.get(url, params={"date_to": "2026-11-23"}).json()["total"] == 1
     assert client.get(url, params={"date_from": "2026-11-25", "date_to": "2026-11-01"}).status_code == 422
+
+
+def test_ingestion_cooldown_countdown(client):
+    from datetime import datetime, timedelta, timezone
+    from app.db.models import AdminAuditLog
+    create_admin(email="admin@example.org", must_change=False)
+    login(client, email="admin@example.org")
+    url = "/api/v1/admin/dashboard/ingestion/cooldown"
+    assert client.get(url).json() == {"retry_after_seconds": 0}
+    with Session(get_engine()) as db:
+        db.add(AdminAuditLog(action="ingestion.run_requested", target_type="ingestion_run", target_id="x",
+                             details="{}", created_at=datetime.now(timezone.utc) - timedelta(seconds=30)))
+        db.commit()
+    remaining = client.get(url).json()["retry_after_seconds"]
+    assert 85 <= remaining <= 91

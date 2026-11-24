@@ -171,3 +171,4 @@ body{background:radial-gradient(1200px 500px at 85% -10%,var(--glow) 0%,transpar
 .admin-filters{flex-wrap:wrap}
 .admin-filters input[type=date]{min-width:150px;color-scheme:inherit}
 @media(max-width:620px){.admin-filters label{flex:1 1 100%}.admin-filters select,.admin-filters input{min-width:0;width:100%}}
+.ingestion-wait{margin:10px 0 0;padding:9px 12px;border-radius:9px;background:var(--warn-soft);color:var(--warn);font-size:12px}

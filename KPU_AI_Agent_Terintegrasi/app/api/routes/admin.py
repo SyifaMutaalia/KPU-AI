@@ -1,4 +1,5 @@
 import hashlib
+import math
 import hmac
 import json
 import logging
@@ -786,6 +787,33 @@ def _require_ingestion_key(x_ingestion_key: str) -> None:
 _RUN_COOLDOWN = timedelta(minutes=2)
 
 
+def _ingestion_cooldown_seconds(db: Session, now: datetime) -> int:
+    """Sisa detik jeda antar-permintaan ingestion (0 = boleh dijalankan sekarang)."""
+    recent = db.scalar(
+        select(AdminAuditLog.created_at)
+        .where(
+            AdminAuditLog.action == "ingestion.run_requested",
+            AdminAuditLog.created_at >= now - _RUN_COOLDOWN,
+        )
+        .order_by(AdminAuditLog.created_at.desc())
+        .limit(1)
+    )
+    if recent is None:
+        return 0
+    if recent.tzinfo is None:
+        recent = recent.replace(tzinfo=timezone.utc)
+    return max(0, math.ceil((recent + _RUN_COOLDOWN - now).total_seconds()))
+
+
+@router.get("/dashboard/ingestion/cooldown")
+def ingestion_cooldown(
+    _user: AdminUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Berapa detik lagi tombol Pindai / Ingest boleh dipakai (untuk hitung mundur di dashboard)."""
+    return {"retry_after_seconds": _ingestion_cooldown_seconds(db, utcnow())}
+
+
 @router.post(
     "/dashboard/ingestion/run", response_model=IngestionRunOut, status_code=202
 )
@@ -810,18 +838,12 @@ def run_ingestion(
             detail="URL PDF harus https dan berasal dari situs resmi yang diizinkan.",
         )
     now = utcnow()
-    recent = db.scalar(
-        select(AdminAuditLog.created_at)
-        .where(
-            AdminAuditLog.action == "ingestion.run_requested",
-            AdminAuditLog.created_at >= now - _RUN_COOLDOWN,
-        )
-        .limit(1)
-    )
-    if recent is not None:
+    remaining = _ingestion_cooldown_seconds(db, now)
+    if remaining:
         raise HTTPException(
             status_code=429,
-            detail="Ingestion baru saja diminta. Tunggu 2 menit lalu coba lagi.",
+            detail=f"Ingestion baru saja diminta. Bisa dijalankan lagi dalam {remaining} detik.",
+            headers={"Retry-After": str(remaining)},
         )
     request_id = secrets.token_hex(16)
     _audit(

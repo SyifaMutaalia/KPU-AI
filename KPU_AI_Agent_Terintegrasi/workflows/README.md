@@ -32,6 +32,8 @@ Index (`kpu-subang-rag`), namespace (`kpu_jdih`), dan text splitter tidak diubah
 
 **Status dokumen di dashboard admin:** *pending* (antre) dikirim node *Kirim Status Antre ke Admin* untuk dokumen yang akan diproses pada eksekusi ini; *processing* dikirim tepat setelah PDF diunduh (node *Kirim Status Processing ke Admin*, di jalur utama sebelum OCR); *success* setelah Pinecone mengonfirmasi upsert; *failed* bila langkah mana pun gagal (via WF2). Status *pending* tidak menimpa dokumen yang sudah *success*.
 
+**Ingest PDF manual (tombol *Ingest PDF ini*):** node *Cek Status di JDIH* membaca nomor dan tahun dari nama file (mis. `2026kpt3213003.pdf`, `2024pkpu002.pdf`), mencari dokumen itu di daftar JDIH (maks. 5–6 halaman), lalu membaca "Keterangan Status" di halaman detailnya. Dokumen **Berlaku** tercatat `berlaku` beserta judul resminya; dokumen **Tidak Berlaku/Dicabut** tidak diproses (tercatat di Error log); bila JDIH tidak bisa dihubungi, ingestion tetap berjalan dengan status `belum_diverifikasi`. Antar-permintaan ingestion dari dashboard berjeda 2 menit; dashboard menampilkan hitung mundurnya.
+
 **Aturan seleksi dokumen** (node *Periksa Link Download* dan *periksa dokumen yang sudah diproses*):
 
 1. Hanya dokumen dengan status **Berlaku** di halaman detail JDIH. Dokumen *Tidak Berlaku*, *Dicabut*, atau yang statusnya tidak terbaca tidak diproses.
